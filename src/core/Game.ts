@@ -28,6 +28,20 @@ import { isUnitInactive, type FormationType, type Unit } from "../units/types";
 import { UIController } from "../ui/UIController";
 import { Battlefield, WORLD_HEIGHT, WORLD_WIDTH } from "../world/Battlefield";
 
+export interface BattleFormationResult {
+  id: string;
+  name: string;
+  type: Unit["type"];
+  soldierCount: number;
+  maximumSoldiers: number;
+  state: Unit["state"];
+}
+
+export interface BattleReport {
+  outcome: "romanVictory" | "saxonVictory" | "mutualDestruction";
+  formations: BattleFormationResult[];
+}
+
 export class Game {
   private readonly camera: Camera;
   private readonly battlefield = new Battlefield();
@@ -58,6 +72,7 @@ export class Game {
   private mouseWorld: Vec2 = { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 };
   private debugEnabled = false;
   private terrainOverlayEnabled = false;
+  private battleReportSent = false;
   private speed = 1;
   private paused = false;
   private readonly fixedStep = 1 / 60;
@@ -66,6 +81,7 @@ export class Game {
     private readonly canvas: HTMLCanvasElement,
     rendererMode: RendererMode = "isometric",
     selectedRomanUnitIds?: readonly string[],
+    private readonly onBattleEnded?: (report: BattleReport) => void,
   ) {
     this.units = createPrototypeScenario(selectedRomanUnitIds);
     this.simulation = new Simulation(this.units, this.battlefield);
@@ -105,6 +121,7 @@ export class Game {
         if (this.simulation.stats.outcome !== "ongoing") {
           this.paused = true;
           this.accumulator = 0;
+          this.sendBattleReport();
           break;
         }
       }
@@ -134,6 +151,24 @@ export class Game {
     );
     this.frameRequest = requestAnimationFrame(this.frame);
   };
+
+  private sendBattleReport(): void {
+    if (this.battleReportSent || this.simulation.stats.outcome === "ongoing") return;
+    this.battleReportSent = true;
+    this.onBattleEnded?.({
+      outcome: this.simulation.stats.outcome,
+      formations: this.units
+        .filter((unit) => unit.faction === "roman")
+        .map((unit) => ({
+          id: unit.id,
+          name: unit.name,
+          type: unit.type,
+          soldierCount: unit.soldierCount,
+          maximumSoldiers: unit.maximumSoldiers,
+          state: unit.state,
+        })),
+    });
+  }
 
   private bindInput(): void {
     window.addEventListener("keydown", (event) => {

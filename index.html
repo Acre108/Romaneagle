@@ -242,6 +242,51 @@
       <section id="battle-result" class="battle-result panel" hidden>
         <div class="eyebrow">BATTLE ENDED</div><h2 id="battle-result-title"></h2><p id="battle-result-detail"></p>
       </section>
+      <section id="victory-debrief" class="victory-debrief panel" hidden aria-label="Victory debrief">
+        <div class="victory-header">
+          <span class="victory-laurel" aria-hidden="true">✦</span>
+          <div>
+            <p class="campaign-kicker">MISSION COMPLETE</p>
+            <h2>Victory at Caer Durn</h2>
+            <p>The ford is held. Before the company marches, the roll is called.</p>
+          </div>
+          <div class="victory-total">
+            <small>COMPANY EXPERIENCE</small>
+            <b id="company-experience">+0 XP</b>
+          </div>
+        </div>
+        <div class="result-column-headings" aria-hidden="true">
+          <span>Formation</span><span>Final strength</span><span>Experience</span>
+        </div>
+        <div id="formation-results" class="formation-results"></div>
+        <footer class="debrief-footer">
+          <p><span>✦</span> Surviving commanders are ready to report.</p>
+          <button id="continue-story" class="story-button">
+            <span>CONTINUE</span><small>After the battle</small><i>→</i>
+          </button>
+        </footer>
+      </section>
+
+      <section id="post-battle-cutscene" class="post-battle-cutscene" hidden aria-label="After-battle conversation">
+        <div class="cutscene-backdrop" aria-hidden="true"></div>
+        <div class="cutscene-chapter">
+          <small>AFTER THE BATTLE</small>
+          <span></span>
+          <b>CAER DURN · DUSK</b>
+        </div>
+        <div id="cutscene-portrait" class="cutscene-portrait portrait-flavia" aria-hidden="true"></div>
+        <div class="cutscene-dialogue">
+          <div class="cutscene-speaker">
+            <p id="cutscene-speaker-name">Flavia Marcellus</p>
+            <span id="cutscene-speaker-role">Commander · I Cohort Prima</span>
+          </div>
+          <p id="cutscene-line">The bridge is ours.</p>
+          <footer>
+            <div id="cutscene-progress" class="cutscene-progress" aria-label="Conversation progress"></div>
+            <button id="next-cutscene-line">NEXT <span>→</span></button>
+          </footer>
+        </div>
+      </section>
       <nav class="commandbar panel" aria-label="Formation commands">
         <button data-command="move"><kbd>RMB</kbd><span>Move</span></button>
         <button data-command="hold"><kbd>H</kbd><span>Hold</span></button>

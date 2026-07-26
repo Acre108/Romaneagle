@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171c17" />
+    <meta name="description" content="Choose your commanders, study the mission, and lead the last Roman formations in Britain." />
+    <meta property="og:title" content="The Last Eagle — The Ford at Caer Durn" />
+    <meta property="og:description" content="A companion-led formation tactics campaign in Britain, AD 402." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="The Last Eagle — The Ford at Caer Durn" />
+    <meta name="twitter:description" content="Choose your commanders. Read the field. Hold the ford." />
+    <meta name="twitter:image" content="/og.png" />
+    <title>The Last Eagle — War Council</title>
+    <script>
+      if (window.location.protocol === "file:") {
+        document.documentElement.dataset.directFile = "true";
+      }
+    </script>
+  </head>
+  <body>
+    <div id="launch-help">
+      <section>
+        <p class="campaign-kicker">THE LAST EAGLE</p>
+        <h1>The war council needs the game server</h1>
+        <p>Close this tab and double-click <strong>PLAY_GAME.cmd</strong> in the project folder.</p>
+      </section>
+    </div>
+
+    <section id="campaign-screen" class="campaign-screen" aria-label="Campaign war council">
+      <header class="campaign-header">
+        <a class="campaign-brand" href="#" aria-label="The Last Eagle campaign home">
+          <span class="brand-mark" aria-hidden="true">IV</span>
+          <span><b>THE LAST EAGLE</b><small>A campaign of the old north</small></span>
+        </a>
+        <nav class="campaign-nav" aria-label="Campaign sections">
+          <button class="active">War council</button>
+          <button disabled>Company</button>
+          <button disabled>Chronicle</button>
+        </nav>
+        <div class="campaign-resources" aria-label="Campaign resources">
+          <span><small>Supplies</small><b>12 days</b></span>
+          <span><small>Renown</small><b>1,240</b></span>
+          <button class="settings-button" aria-label="Settings">•••</button>
+        </div>
+      </header>
+
+      <main class="campaign-main">
+        <section class="mission-column">
+          <div class="section-heading">
+            <span>MISSION BRIEFING</span>
+            <b>III</b>
+          </div>
+          <p class="campaign-kicker">ACT I · THE OLD ROAD</p>
+          <h1>The Ford at<br /><em>Caer Durn</em></h1>
+          <p class="mission-lede">
+            A Saxon warband has crossed the eastern ridge. Break them at the river before
+            the road to Eboracum lies open.
+          </p>
+
+          <div class="mission-objective">
+            <span class="objective-seal" aria-hidden="true">✦</span>
+            <div><small>PRIMARY OBJECTIVE</small><b>Rout the Saxon warband</b></div>
+          </div>
+
+          <dl class="mission-facts">
+            <div><dt>Terrain</dt><dd>Ford · Bridge · Woodland</dd></div>
+            <div><dt>Weather</dt><dd>Cold rain clearing</dd></div>
+            <div><dt>Enemy</dt><dd>6 formations · Wulfgar</dd></div>
+          </dl>
+
+          <blockquote id="scout-report">
+            “Their centre is heavy, but their right has outrun the baggage. The river will
+            divide them if we strike before noon.”
+            <cite>— Lucius, explorator</cite>
+          </blockquote>
+
+          <div class="mission-reward">
+            <small>REWARD</small>
+            <span><b>320</b> renown</span>
+            <span><b>+1</b> company resolve</span>
+          </div>
+        </section>
+
+        <section class="map-column" aria-label="Mission map and companion conversation">
+          <div class="campaign-map" role="img" aria-label="Tactical map of the ford at Caer Durn">
+            <div class="map-grid"></div>
+            <div class="map-hills hills-one"></div>
+            <div class="map-hills hills-two"></div>
+            <div class="map-road"></div>
+            <div class="map-river"></div>
+            <span class="map-label label-ridge">EASTERN RIDGE</span>
+            <span class="map-label label-ford">OLD FORD</span>
+            <span class="map-label label-camp">ROMAN CAMP</span>
+            <div class="map-pin roman-pin"><i></i><span>Your company</span></div>
+            <div class="map-pin saxon-pin"><i></i><span>Wulfgar's host</span></div>
+            <div class="map-distance">2.4 MILES</div>
+            <div class="map-compass" aria-hidden="true"><b>N</b><i></i></div>
+            <div class="map-controls" aria-hidden="true"><button>+</button><button>−</button></div>
+          </div>
+
+          <section class="council-panel" aria-live="polite">
+            <div class="speaker-portrait" id="speaker-portrait" data-initials="FM">
+              <span>FM</span>
+              <i></i>
+            </div>
+            <div class="speaker-copy">
+              <p class="campaign-kicker">AT THE WAR COUNCIL</p>
+              <div class="speaker-title">
+                <h2 id="speaker-name">Flavia Marcellus</h2>
+                <span id="speaker-role">Commander · I Cohort Prima</span>
+              </div>
+              <p id="speaker-line">
+                “Give Prima the bridge. The river will guard one flank, and our shields
+                will answer for the other.”
+              </p>
+              <div id="dialogue-choices" class="dialogue-choices">
+                <button data-reply="trust">“I trust your judgement.”</button>
+                <button data-reply="concern">“And if they turn the ford?”</button>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <aside class="roster-column">
+          <div class="section-heading">
+            <span>CHOOSE FORMATIONS</span>
+            <b><strong id="formation-count">4</strong>/4</b>
+          </div>
+          <p class="roster-help">Your commanders ride with the formations you deploy.</p>
+
+          <div class="formation-list" id="formation-list">
+            <article class="formation-card selected" tabindex="0" role="checkbox" aria-checked="true"
+              data-unit-id="R-I" data-companion="flavia">
+              <div class="mini-portrait red" aria-hidden="true"><span>FM</span></div>
+              <div class="formation-copy">
+                <div><h3>I Cohort · Prima</h3><span class="readiness ready">READY</span></div>
+                <p>Flavia Marcellus <i>·</i> Heavy infantry</p>
+                <div class="formation-stats"><span>80 soldiers</span><span>Tortoise</span></div>
+              </div>
+              <span class="formation-check" aria-hidden="true">✓</span>
+              <button class="talk-button" data-talk="flavia">Speak</button>
+            </article>
+
+            <article class="formation-card selected" tabindex="0" role="checkbox" aria-checked="true"
+              data-unit-id="R-II" data-companion="cassian">
+              <div class="mini-portrait ochre" aria-hidden="true"><span>CC</span></div>
+              <div class="formation-copy">
+                <div><h3>II Cohort · Secunda</h3><span class="readiness ready">READY</span></div>
+                <p>Cassian Corvus <i>·</i> Heavy infantry</p>
+                <div class="formation-stats"><span>80 soldiers</span><span>Disciplined</span></div>
+              </div>
+              <span class="formation-check" aria-hidden="true">✓</span>
+              <button class="talk-button" data-talk="cassian">Speak</button>
+            </article>
+
+            <article class="formation-card selected" tabindex="0" role="checkbox" aria-checked="true"
+              data-unit-id="R-CAV" data-companion="brennos">
+              <div class="mini-portrait blue" aria-hidden="true"><span>BV</span></div>
+              <div class="formation-copy">
+                <div><h3>Equites Honoriani</h3><span class="readiness ready">READY</span></div>
+                <p>Brennos of Venta <i>·</i> Cavalry</p>
+                <div class="formation-stats"><span>50 riders</span><span>Flank charge</span></div>
+              </div>
+              <span class="formation-check" aria-hidden="true">✓</span>
+              <button class="talk-button" data-talk="brennos">Speak</button>
+            </article>
+
+            <article class="formation-card selected" tabindex="0" role="checkbox" aria-checked="true"
+              data-unit-id="R-ARCH" data-companion="aelia">
+              <div class="mini-portrait green" aria-hidden="true"><span>AN</span></div>
+              <div class="formation-copy">
+                <div><h3>Britannic Sagittarii</h3><span class="readiness ready">READY</span></div>
+                <p>Aelia Naso <i>·</i> Archers</p>
+                <div class="formation-stats"><span>60 archers</span><span>12 volleys</span></div>
+              </div>
+              <span class="formation-check" aria-hidden="true">✓</span>
+              <button class="talk-button" data-talk="aelia">Speak</button>
+            </article>
+          </div>
+
+          <div class="deployment-summary">
+            <div><span>Deployed strength</span><b id="deployed-strength">270</b></div>
+            <div><span>Company morale</span><b class="high-morale">STEADFAST</b></div>
+          </div>
+          <button id="begin-battle" class="begin-battle">
+            <span>BEGIN MISSION</span>
+            <small>March to Caer Durn</small>
+            <i aria-hidden="true">→</i>
+          </button>
+          <p id="deployment-warning" class="deployment-warning" aria-live="polite"></p>
+        </aside>
+      </main>
+
+      <footer class="campaign-footer">
+        <span>Mid Spring, 402 AD</span>
+        <span class="footer-line"></span>
+        <span>Eboracum frontier · Britannia</span>
+        <span class="autosave-note">Campaign prototype · Choices reset on refresh</span>
+      </footer>
+    </section>
+
+    <section id="battle-screen" hidden>
+      <canvas id="battlefield" aria-label="Interactive formation tactics battlefield"></canvas>
+      <header class="topbar panel">
+        <div><strong>THE LAST EAGLE</strong><span class="date">Mid Spring, 402 AD</span></div>
+        <div class="speed">
+          <button id="pause-button" aria-label="Pause game">Ⅱ</button>
+          <button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="3">3×</button>
+          <button id="terrain-button" aria-label="Show terrain map" aria-pressed="false">Terrain</button>
+        </div>
+        <div class="forces">
+          <span class="roman-dot"></span> Rome <b id="roman-count">4</b>
+          <span class="saxon-dot"></span> Saxons <b id="saxon-count">6</b>
+        </div>
+      </header>
+      <aside id="selection-panel" class="selection-panel panel">
+        <div class="eyebrow">SELECTED FORMATION</div>
+        <h2 id="unit-name">No unit selected</h2>
+        <div id="unit-type" class="unit-type">Drag or click to select Romans</div>
+        <dl>
+          <div><dt>Strength</dt><dd id="unit-strength">—</dd></div>
+          <div><dt>Ammo</dt><dd id="unit-ammo">—</dd></div>
+          <div><dt>Morale</dt><dd><span id="unit-morale">—</span><i><em id="morale-bar"></em></i></dd></div>
+          <div><dt>Cohesion</dt><dd><span id="unit-cohesion">—</span><i><em id="cohesion-bar"></em></i></dd></div>
+          <div><dt>Stamina</dt><dd id="unit-stamina">—</dd></div>
+          <div><dt>Formation</dt><dd id="unit-formation">—</dd></div>
+          <div><dt>Terrain</dt><dd id="unit-terrain">—</dd></div>
+          <div><dt>Order</dt><dd id="unit-order">—</dd></div>
+        </dl>
+      </aside>
+      <aside class="objective-panel panel">
+        <div class="eyebrow">BATTLE OBJECTIVE</div><h3>Rout the Saxon warband</h3>
+        <p>Break their formations before the Roman line collapses.</p>
+        <div><span>Romans escaped</span><b id="roman-routed">0</b></div>
+        <div><span>Saxons escaped</span><b id="saxon-routed">0</b></div>
+        <div><span>Romans destroyed</span><b id="roman-destroyed">0</b></div>
+        <div><span>Saxons destroyed</span><b id="saxon-destroyed">0</b></div>
+      </aside>
+      <section id="battle-result" class="battle-result panel" hidden>
+        <div class="eyebrow">BATTLE ENDED</div><h2 id="battle-result-title"></h2><p id="battle-result-detail"></p>
+      </section>
+      <nav class="commandbar panel" aria-label="Formation commands">
+        <button data-command="move"><kbd>RMB</kbd><span>Move</span></button>
+        <button data-command="hold"><kbd>H</kbd><span>Hold</span></button>
+        <button data-command="line"><kbd>L</kbd><span>Line</span></button>
+        <button data-command="column"><kbd>C</kbd><span>Column</span></button>
+        <button data-command="ability" aria-label="G unique ability"><kbd>G</kbd><span id="ability-command-label">Unique ability</span></button>
+        <button data-command="mob"><kbd>B</kbd><span>Mob</span></button>
+        <button data-command="about-face"><kbd>F</kbd><span>About face</span></button>
+        <button data-command="rally"><kbd>R</kbd><span>Rally</span></button>
+      </nav>
+      <div id="debug" class="debug panel" hidden>
+        <b>Prototype 0.3 · Campaign</b><span id="debug-fps"></span><span id="debug-soldiers"></span>
+        <span id="debug-culled"></span><span id="debug-terrain"></span><span id="debug-bodies"></span>
+        <span id="debug-equipment"></span><span id="debug-escape-visuals"></span><span id="debug-render"></span>
+        <span id="debug-camera"></span><span id="debug-mouse"></span><span id="debug-units"></span>
+        <span id="debug-speed"></span><span id="debug-selected"></span>
+      </div>
+      <aside id="terrain-legend" class="terrain-legend panel" hidden>
+        <div class="eyebrow">GAMEPLAY TERRAIN</div>
+        <span><i class="terrain-open"></i>Open ground</span><span><i class="terrain-road"></i>Road</span>
+        <span><i class="terrain-rough"></i>Rough ground</span><span><i class="terrain-woods"></i>Woods</span>
+        <span><i class="terrain-shallow"></i>Shallow water</span><span><i class="terrain-deep"></i>Deep water · impassable</span>
+        <small>A formation is affected above 20% coverage.</small>
+      </aside>
+      <div class="help">WASD pan · Wheel zoom · RMB move/attack · F about face · T terrain · F3 debug</div>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -21,7 +21,6 @@ import {
   ROUT_ESCAPE_PROGRESS_DISTANCE,
   ROUT_MORALE_THRESHOLD,
   ROUT_WATER_FAILURE_SECONDS,
-  saxonGroupCrossingX,
   Simulation,
   STANDARD_AURA_COVERAGE,
 } from "../systems/Simulation";
@@ -83,7 +82,7 @@ describe("repeatable battlefield", () => {
 });
 
 describe("AI path recovery", () => {
-  it("stages grouped Saxons in separate lanes and releases them as one wave", () => {
+  it("routes grouped Saxons immediately through map-derived crossings", () => {
     const units = createPrototypeScenario();
     const battlefield = new Battlefield(402);
     const simulation = new Simulation(units, battlefield);
@@ -92,32 +91,22 @@ describe("AI path recovery", () => {
     simulation.update(0.01);
 
     expect(grouped).toHaveLength(6);
+    const usedCrossings = new Set<number>();
     for (const unit of grouped) {
-      expect(unit.pathCrossingX).toBe(saxonGroupCrossingX(unit));
-      expect(unit.crossingLaneCommitted).toBe(true);
       expect(unit.order.type).toBe("move");
+      expect(unit.order.route).toBeDefined();
+      expect(unit.crossingLaneCommitted).toBe(true);
+      if (unit.pathCrossingX !== undefined) {
+        usedCrossings.add(Math.round(unit.pathCrossingX / 50) * 50);
+      }
+      let previous = unit.position;
+      for (const waypoint of unit.order.route ?? []) {
+        expect(battlefield.segmentBlocked(previous, waypoint)).toBe(false);
+        previous = waypoint;
+      }
     }
 
-    const laggard = grouped.find((unit) => unit.id === "S-WOLF");
-    if (!laggard) throw new Error("S-WOLF missing");
-    for (const unit of grouped) {
-      if (unit === laggard || !unit.order.destination) continue;
-      unit.position = { ...unit.order.destination };
-    }
-    simulation.update(2.01);
-
-    for (const unit of grouped) {
-      if (unit === laggard) continue;
-      expect(unit.order.type).toBe("hold");
-    }
-    expect(laggard.order.type).toBe("move");
-    if (!laggard.order.destination) throw new Error("Staging destination missing");
-    laggard.position = { ...laggard.order.destination };
-
-    simulation.update(2.01);
-
-    expect(grouped.some((unit) => unit.order.type === "move")).toBe(true);
-    expect(laggard.order.type).not.toBe("hold");
+    expect(usedCrossings.size).toBeGreaterThan(1);
   });
 
   it("keeps a Saxon formation formed until it reaches its crossing approach", () => {

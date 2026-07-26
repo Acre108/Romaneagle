@@ -140,9 +140,7 @@ const PATH_FALLBACK_SECONDS = 4;
 const PATH_FALLBACK_DISTANCE = 72;
 const ENGAGEMENT_STALL_SECONDS = 3;
 export const ROUT_WATER_FAILURE_SECONDS = 3;
-const SAXON_CROSSING_READY_DISTANCE = 54;
 const AI_THINK_SECONDS = 1.1;
-const SAXON_CROSSING_MAX_WAIT_SECONDS = 8;
 const SAXON_TARGET_STICKINESS = 360;
 
 const SAXON_GROUP_CROSSING_INDEX: Readonly<Record<MovementGroup, number>> = {
@@ -455,8 +453,6 @@ export class Simulation {
     road: 0,
   };
   private aiTimer = 0;
-  private saxonCrossingWaveReleased = false;
-  private saxonCrossingWaveWait = 0;
 
   constructor(readonly units: Unit[], readonly battlefield: Battlefield) {
     this.standards = units
@@ -2143,7 +2139,6 @@ export class Simulation {
       }
       return usage;
     };
-    const crossingWaveReleased = this.updateSaxonCrossingWave();
     for (const unit of this.units) {
       if (
         unit.faction !== "saxon" ||
@@ -2168,7 +2163,6 @@ export class Simulation {
         this.updateSaxonStandardOrder(unit);
         continue;
       }
-      if (!crossingWaveReleased && this.stageSaxonCrossing(unit)) continue;
       const previousTargetId = unit.aiTargetId;
       const previousEngagementArc = unit.aiEngagementArc;
       if (unit.aiTargetId && unit.aiEngagementArc) {
@@ -2245,97 +2239,6 @@ export class Simulation {
       );
       this.identifyRouteCrossing(unit, targetPosition);
     }
-  }
-
-  private updateSaxonCrossingWave(): boolean {
-    if (this.saxonCrossingWaveReleased) return true;
-    let eligible = 0;
-    for (const unit of this.units) {
-      const crossingX = saxonGroupCrossingX(unit);
-      if (
-        crossingX === undefined ||
-        unit.type === "standard" ||
-        unit.state === "routing" ||
-        isUnitInactive(unit)
-      ) continue;
-      eligible += 1;
-    }
-    // Small test/skirmish scenarios should retain ordinary independent AI.
-    if (eligible < 4) {
-      this.saxonCrossingWaveReleased = true;
-      return true;
-    }
-
-    this.saxonCrossingWaveWait += AI_THINK_SECONDS;
-    let ready = 0;
-    for (const unit of this.units) {
-      const crossingX = saxonGroupCrossingX(unit);
-      if (
-        crossingX === undefined ||
-        unit.type === "standard" ||
-        unit.state === "routing" ||
-        isUnitInactive(unit)
-      ) continue;
-      const currentBank = unit.position.y >=
-          this.battlefield.streamY(unit.position.x)
-        ? 1
-        : -1;
-      const originBank = unit.crossingOriginBank ?? currentBank;
-      unit.crossingOriginBank = originBank;
-      unit.pathCrossingX = crossingX;
-      unit.crossingLaneCommitted = true;
-      unit.crossingPhase = "approach";
-      const laneX = crossingX + unit.crossingLaneOffset;
-      const clearance = STREAM_HALF_WIDTH + formationRadius(unit) + 18;
-      const approachY =
-        this.battlefield.streamY(laneX) + originBank * clearance;
-      if (
-        unit.inCombat ||
-        currentBank !== originBank ||
-        Math.hypot(
-          unit.position.x - laneX,
-          unit.position.y - approachY,
-        ) <= SAXON_CROSSING_READY_DISTANCE
-      ) {
-        ready += 1;
-      }
-    }
-    if (
-      eligible === 0 ||
-      ready === eligible ||
-      this.saxonCrossingWaveWait >= SAXON_CROSSING_MAX_WAIT_SECONDS
-    ) {
-      this.saxonCrossingWaveReleased = true;
-    }
-    return this.saxonCrossingWaveReleased;
-  }
-
-  private stageSaxonCrossing(unit: Unit): boolean {
-    const crossingX = saxonGroupCrossingX(unit);
-    if (crossingX === undefined || unit.state === "routing") return false;
-    const originBank = unit.crossingOriginBank ?? (
-      unit.position.y >= this.battlefield.streamY(unit.position.x) ? 1 : -1
-    );
-    unit.crossingOriginBank = originBank;
-    unit.pathCrossingX = crossingX;
-    unit.crossingLaneCommitted = true;
-    unit.crossingPhase = "approach";
-    unit.aiTargetId = undefined;
-    unit.aiEngagementArc = undefined;
-    const laneX = crossingX + unit.crossingLaneOffset;
-    const approachY = this.battlefield.streamY(laneX) +
-      originBank * (STREAM_HALF_WIDTH + formationRadius(unit) + 18);
-    const approach = { x: laneX, y: approachY };
-    if (distance(unit.position, approach) <= SAXON_CROSSING_READY_DISTANCE) {
-      unit.order = { type: "hold" };
-    } else {
-      unit.order = {
-        type: "move",
-        destination: approach,
-        facing: originBank < 0 ? Math.PI : 0,
-      };
-    }
-    return true;
   }
 
   private updateSaxonStandardOrder(unit: Unit): void {

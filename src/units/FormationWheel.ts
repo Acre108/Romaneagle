@@ -22,5 +22,8 @@ export function wheelFormation(unit: Unit, turnAmount: number): void {
 }
 
 export function formationWheelRate(unit: Unit, movementSpeed: number): number {
-  return Math.min(unit.turnSpeed, movementSpeed / Math.max(10, formationHalfWidth(unit) * 2));
+  return Math.min(
+    unit.turnSpeed,
+    movementSpeed * 1.7 / Math.max(10, formationHalfWidth(unit) * 2),
+  );
 }

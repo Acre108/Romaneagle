@@ -101,6 +101,7 @@ export class TopDownRenderer {
     this.drawTerrain(ctx);
     if (terrainOverlay) this.drawTerrainOverlay(ctx);
     this.drawStandardAuras(ctx, standards);
+    this.drawSelectedRoutes(ctx, units);
     this.drawDiscardedEquipment(ctx, discardedEquipment);
     this.drawBodies(ctx, bodies);
     let visibleSoldiers = 0;
@@ -125,6 +126,36 @@ export class TopDownRenderer {
       visibleEscapeVisuals: routEscapeVisuals.length,
       renderTimeMs: performance.now() - renderStarted,
     };
+  }
+
+  private drawSelectedRoutes(ctx: CanvasRenderingContext2D, units: Unit[]): void {
+    ctx.save();
+    ctx.strokeStyle = "rgba(238, 202, 112, .82)";
+    ctx.fillStyle = "#f1d17d";
+    ctx.lineWidth = 2 / this.camera.zoom;
+    ctx.setLineDash([9 / this.camera.zoom, 7 / this.camera.zoom]);
+    for (const unit of units) {
+      const route = unit.selected ? unit.order.route : undefined;
+      if (!route || route.length === 0) continue;
+      const startIndex = Math.max(0, unit.order.routeIndex ?? 0);
+      ctx.beginPath();
+      ctx.moveTo(unit.position.x, unit.position.y);
+      for (let index = startIndex; index < route.length; index += 1) {
+        const point = route[index];
+        if (point) ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (let index = startIndex; index < route.length; index += 1) {
+        const point = route[index];
+        if (!point) continue;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 4 / this.camera.zoom, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.setLineDash([9 / this.camera.zoom, 7 / this.camera.zoom]);
+    }
+    ctx.restore();
   }
 
   private drawDiscardedEquipment(

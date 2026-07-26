@@ -159,6 +159,7 @@ export class IsometricRenderer {
     if (terrainOverlay) this.drawTerrainOverlay(ctx);
     this.drawStandardAuras(ctx, standards);
     this.drawSelectionFootprints(ctx, units, time);
+    this.drawSelectedRoutes(ctx, units);
     if (drag.orderStart && drag.orderEnd) this.drawOrderPreview(ctx, drag.orderStart, drag.orderEnd, units);
     this.collectDepthRecords(
       units,
@@ -204,6 +205,40 @@ export class IsometricRenderer {
 
   private project(worldX: number, worldY: number): Vec2 {
     return this.camera.worldToScreenInto(worldX, worldY, this.width, this.height, this.screenScratch);
+  }
+
+  private drawSelectedRoutes(ctx: CanvasRenderingContext2D, units: Unit[]): void {
+    ctx.save();
+    ctx.strokeStyle = "rgba(238, 202, 112, .86)";
+    ctx.fillStyle = "#f1d17d";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([9, 7]);
+    for (const unit of units) {
+      const route = unit.selected ? unit.order.route : undefined;
+      if (!route || route.length === 0) continue;
+      const startIndex = Math.max(0, unit.order.routeIndex ?? 0);
+      const start = { ...this.project(unit.position.x, unit.position.y) };
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      for (let index = startIndex; index < route.length; index += 1) {
+        const point = route[index];
+        if (!point) continue;
+        const screen = this.project(point.x, point.y);
+        ctx.lineTo(screen.x, screen.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (let index = startIndex; index < route.length; index += 1) {
+        const point = route[index];
+        if (!point) continue;
+        const screen = this.project(point.x, point.y);
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.setLineDash([9, 7]);
+    }
+    ctx.restore();
   }
 
   private drawGround(ctx: CanvasRenderingContext2D, debug: boolean): void {

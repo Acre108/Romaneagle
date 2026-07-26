@@ -18,7 +18,7 @@ export type UnitState = "steady" | "shaken" | "routing" | "broken" | "escaped";
 export type TacticalState = "routing" | "vulnerable" | "standard" | "prepared";
 export type UnitTerrain = "open" | "road" | "rough" | "woods" | "shallow water" | "deep water";
 export type OrderType = "hold" | "move" | "attack" | "rally" | "fight";
-export type PathingState = "direct" | "reorganising" | "fallback";
+export type PathingState = "direct" | "reorganising" | "fallback" | "blocked";
 export type CrossingPhase = "approach" | "crossing" | "clearing";
 export type EngagementArc = "front" | "left" | "right" | "rear";
 export type MovementGroup = "left" | "centre" | "right";
@@ -27,6 +27,10 @@ export const ROUTING_DECISION_SECONDS = 10;
 export interface Order {
   type: OrderType;
   destination?: Vec2;
+  finalDestination?: Vec2;
+  route?: Vec2[];
+  routeIndex?: number;
+  aligning?: boolean;
   facing?: number;
   targetUnitId?: string;
   engagementArc?: EngagementArc;
@@ -108,6 +112,8 @@ export interface Unit {
   pathingState: PathingState;
   stuckTimer: number;
   fallbackDestination?: Vec2;
+  pathGoal?: Vec2;
+  pathFacing?: number;
   pathCrossingX?: number;
   standardMoraleBoost: boolean;
   routWaterStuckTimer: number;

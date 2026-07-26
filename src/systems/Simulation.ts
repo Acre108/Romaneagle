@@ -21,6 +21,10 @@ import {
 } from "../units/FormationTerrain";
 import { formationWheelRate, wheelFormation } from "../units/FormationWheel";
 import {
+  assignFormationMoveOrder,
+  planFormationRoute,
+} from "../units/FormationPathfinding";
+import {
   calculateFormationWrapOffset,
 } from "../units/FormationWrap";
 import {
@@ -108,7 +112,7 @@ export interface BattleStats {
 
 export const CHARGE_DURATION = 3;
 export const COMBAT_STRIKE_INTERVAL = 1.5;
-export const ARCHER_RANGE = 430;
+export const ARCHER_RANGE = 480;
 export const ARCHER_PREFERRED_RANGE = 370;
 export const ARCHER_VOLLEY_INTERVAL = 2.8;
 export const STANDARD_AURA_RADIUS = 230;
@@ -137,8 +141,9 @@ const PATH_FALLBACK_DISTANCE = 72;
 const ENGAGEMENT_STALL_SECONDS = 3;
 export const ROUT_WATER_FAILURE_SECONDS = 3;
 const SAXON_CROSSING_READY_DISTANCE = 54;
-const SAXON_CROSSING_MAX_WAIT_SECONDS = 24;
-const SAXON_TARGET_STICKINESS = 165;
+const AI_THINK_SECONDS = 1.1;
+const SAXON_CROSSING_MAX_WAIT_SECONDS = 8;
+const SAXON_TARGET_STICKINESS = 360;
 
 const SAXON_GROUP_CROSSING_INDEX: Readonly<Record<MovementGroup, number>> = {
   left: 0,
@@ -468,7 +473,7 @@ export class Simulation {
   update(dt: number): void {
     this.aiTimer -= dt;
     if (this.aiTimer <= 0) {
-      this.aiTimer = 2;
+      this.aiTimer = AI_THINK_SECONDS;
       this.updateAI();
     }
     for (const unit of this.units) {
@@ -534,7 +539,7 @@ export class Simulation {
     unit.recentDamageDealt *= combatMemory;
     unit.recentDamageTaken *= combatMemory;
     const formationLocked = unit.formationChangeTimer > 0;
-    let destination = unit.order.destination;
+    let destination = this.advanceFormationRoute(unit);
     let attackTarget: Unit | undefined;
     if (unit.order.type === "attack") {
       attackTarget = unit.order.targetUnitId
@@ -554,7 +559,7 @@ export class Simulation {
       } else {
         const rangedEngagement = unit.type === "archers" &&
           unit.ammunition > 0 &&
-          distance(unit.position, attackTarget.position) <= ARCHER_PREFERRED_RANGE;
+          distance(unit.position, attackTarget.position) <= ARCHER_RANGE;
         const contact = calculateFormationContact(unit, attackTarget, this.contactScratch);
         if (rangedEngagement || contact.separation <= CHARGE_CONTACT_PADDING) {
           destination = undefined;
@@ -568,31 +573,36 @@ export class Simulation {
                 unit.order.engagementSlotIndex ?? 0,
               )
             : attackTarget.position;
-          destination = calculateSafeAIDestination(
-            unit,
-            attackDestination,
-            this.battlefield,
-            undefined,
-            unit.pathCrossingX,
-          );
-          const crossingRequired = this.battlefield.segmentCrossesDeepWater(
+          const previousGoal = unit.order.finalDestination;
+          const routeRequired = this.battlefield.segmentBlocked(
             unit.position,
             attackDestination,
-          ) || (
-            unit.pathCrossingX !== undefined &&
-            Math.abs(destination.x - unit.pathCrossingX) < 1
           );
-          if (crossingRequired) {
-            for (const crossing of WATER_CROSSINGS) {
-              if (Math.abs(destination.x - crossing.x) < 1) {
-                unit.pathCrossingX = crossing.x;
-                break;
-              }
-            }
+          if (!routeRequired) {
+            unit.order.route = undefined;
+            unit.order.routeIndex = undefined;
+            unit.order.finalDestination = undefined;
+            unit.order.destination = undefined;
+            destination = attackDestination;
+          } else if (
+            !unit.order.route ||
+            !previousGoal ||
+            distance(previousGoal, attackDestination) > 48
+          ) {
+            const route = planFormationRoute(
+              unit.position,
+              attackDestination,
+              this.battlefield,
+            );
+            unit.order.route = route;
+            unit.order.routeIndex = 0;
+            unit.order.finalDestination = { ...attackDestination };
+            unit.order.destination = route?.[0]
+              ? { ...route[0] }
+              : { ...attackDestination };
+            destination = this.advanceFormationRoute(unit);
           } else {
-            unit.pathCrossingX = undefined;
-            unit.crossingPhase = undefined;
-            unit.crossingOriginBank = undefined;
+            destination = this.advanceFormationRoute(unit);
           }
         }
       }
@@ -642,7 +652,25 @@ export class Simulation {
       const dx = destination.x - unit.position.x;
       const dy = destination.y - unit.position.y;
       const remaining = Math.hypot(dx, dy);
-      if (remaining > 8) {
+      if (unit.order.aligning && unit.order.facing !== undefined) {
+        moving = true;
+        unit.velocity = Math.max(0, unit.velocity - 70 * dt);
+        const turn = angleDelta(unit.facing, unit.order.facing);
+        if (unit.formation === "mob") {
+          unit.facing = unit.order.facing;
+        } else {
+          const turnRate = formationWheelRate(unit, unit.movementSpeed);
+          wheelFormation(unit, clamp(turn, -turnRate * dt, turnRate * dt));
+        }
+        if (Math.abs(turn) < 0.03) {
+          unit.position.x = destination.x;
+          unit.position.y = destination.y;
+          unit.order = { type: "hold" };
+          unit.pathGoal = undefined;
+          unit.pathFacing = undefined;
+          moving = false;
+        }
+      } else if (remaining > 8) {
         moving = true;
         const desiredFacing = Math.atan2(dy, dx) + Math.PI / 2;
         const turn = angleDelta(unit.facing, desiredFacing);
@@ -660,7 +688,7 @@ export class Simulation {
         if (unit.passingFriendly) {
           const flowingThroughSaxons = unit.faction === "saxon" &&
             !this.hasEnemyContact(unit);
-          modifier *= flowingThroughSaxons ? 0.82 : 0.32;
+          modifier *= flowingThroughSaxons ? 0.82 : 0.58;
         }
         if (
           unit.formation !== "mob" &&
@@ -697,22 +725,15 @@ export class Simulation {
       } else if (unit.order.type === "attack") {
         unit.velocity = Math.max(0, unit.velocity - 70 * dt);
       } else {
-        unit.position.x = destination.x;
-        unit.position.y = destination.y;
         unit.velocity = Math.max(0, unit.velocity - 70 * dt);
         if (unit.order.facing !== undefined) {
-          const turn = angleDelta(unit.facing, unit.order.facing);
-          if (unit.formation === "mob") {
-            unit.facing = unit.order.facing;
-          } else {
-            const turnRate = formationWheelRate(unit, unit.movementSpeed);
-            wheelFormation(unit, clamp(turn, -turnRate * dt, turnRate * dt));
-          }
-          destination.x = unit.position.x;
-          destination.y = unit.position.y;
-          if (Math.abs(turn) < 0.03) unit.order = { type: "hold" };
+          unit.order.aligning = true;
         } else {
+          unit.position.x = destination.x;
+          unit.position.y = destination.y;
           unit.order = { type: "hold" };
+          unit.pathGoal = undefined;
+          unit.pathFacing = undefined;
         }
       }
     } else {
@@ -757,6 +778,7 @@ export class Simulation {
       );
     }
     unit.terrain = classifyFormationTerrain(this.terrainCoverageScratch);
+    this.refreshCrossingPhase(unit);
 
     let mapMarginX = 6;
     let mapMarginY = 6;
@@ -906,7 +928,16 @@ export class Simulation {
           unit.pathingState = "direct";
           unit.fallbackDestination = undefined;
           unit.stuckTimer = 0;
-          unit.order = { type: "hold" };
+          if (unit.pathGoal && unit.pathFacing !== undefined) {
+            assignFormationMoveOrder(
+              unit,
+              unit.pathGoal,
+              unit.pathFacing,
+              this.battlefield,
+            );
+          } else {
+            unit.order = { type: "hold" };
+          }
           this.aiTimer = 0;
         }
         return;
@@ -920,8 +951,7 @@ export class Simulation {
       return;
     }
     if (
-      unit.faction !== "saxon" ||
-      unit.pathingState !== "direct" ||
+      (unit.pathingState !== "direct" && unit.pathingState !== "blocked") ||
       unit.state === "routing" ||
       unit.order.type !== "move" ||
       !unit.order.destination ||
@@ -982,6 +1012,107 @@ export class Simulation {
     unit.velocity = 0;
     unit.stuckTimer = 0;
     unit.cohesion = Math.max(20, unit.cohesion - 3);
+  }
+
+  private advanceFormationRoute(unit: Unit): Vec2 | undefined {
+    const route = unit.order.route;
+    if (!route || route.length === 0) return unit.order.destination;
+    let routeIndex = Math.min(
+      route.length - 1,
+      Math.max(0, unit.order.routeIndex ?? 0),
+    );
+    let destination = route[routeIndex];
+    while (
+      destination &&
+      routeIndex < route.length - 1 &&
+      distance(unit.position, destination) <= 12
+    ) {
+      routeIndex += 1;
+      destination = route[routeIndex];
+    }
+    unit.order.routeIndex = routeIndex;
+    if (destination) unit.order.destination = { ...destination };
+    return unit.order.destination;
+  }
+
+  private identifyRouteCrossing(unit: Unit, goal: Vec2): void {
+    if (
+      unit.pathCrossingX !== undefined &&
+      unit.crossingOriginBank !== undefined
+    ) {
+      return;
+    }
+    const originBank = unit.position.y >=
+        this.battlefield.streamY(unit.position.x)
+      ? 1
+      : -1;
+    const goalBank = goal.y >= this.battlefield.streamY(goal.x) ? 1 : -1;
+    if (originBank === goalBank) {
+      unit.pathCrossingX = undefined;
+      unit.crossingPhase = undefined;
+      unit.crossingOriginBank = undefined;
+      unit.crossingLaneCommitted = false;
+      return;
+    }
+    const route = unit.order.route;
+    if (!route) return;
+    let previous = unit.position;
+    let bestX: number | undefined;
+    let bestDistance = Infinity;
+    for (const waypoint of route) {
+      const segmentLength = distance(previous, waypoint);
+      const steps = Math.max(1, Math.ceil(segmentLength / 8));
+      for (let step = 0; step <= steps; step += 1) {
+        const ratio = step / steps;
+        const x = previous.x + (waypoint.x - previous.x) * ratio;
+        const y = previous.y + (waypoint.y - previous.y) * ratio;
+        const streamDistance = Math.abs(y - this.battlefield.streamY(x));
+        if (
+          streamDistance < bestDistance &&
+          !this.battlefield.isDeepWaterAt(x, y)
+        ) {
+          bestDistance = streamDistance;
+          bestX = x;
+        }
+      }
+      previous = waypoint;
+    }
+    if (bestX === undefined || bestDistance > STREAM_HALF_WIDTH + 4) return;
+    unit.pathCrossingX = bestX;
+    unit.crossingOriginBank = originBank;
+    unit.crossingLaneCommitted = true;
+    unit.crossingPhase = "approach";
+  }
+
+  private refreshCrossingPhase(unit: Unit): void {
+    if (
+      unit.pathCrossingX === undefined ||
+      unit.crossingOriginBank === undefined
+    ) {
+      return;
+    }
+    const streamDistance = Math.abs(
+      unit.position.y - this.battlefield.streamY(unit.position.x),
+    );
+    const currentBank = unit.position.y >=
+        this.battlefield.streamY(unit.position.x)
+      ? 1
+      : -1;
+    const clearance = STREAM_HALF_WIDTH + formationRadius(unit) + 18;
+    if (currentBank !== unit.crossingOriginBank) {
+      if (streamDistance > clearance) {
+        unit.pathCrossingX = undefined;
+        unit.crossingPhase = undefined;
+        unit.crossingOriginBank = undefined;
+        unit.crossingLaneCommitted = false;
+      } else {
+        unit.crossingPhase = "clearing";
+      }
+    } else if (streamDistance <= clearance) {
+      unit.crossingPhase = "crossing";
+    } else {
+      unit.crossingPhase = "approach";
+    }
   }
 
   private resolveCombat(dt: number): void {
@@ -1318,6 +1449,7 @@ export class Simulation {
 
   private resolveFormationPenetration(unit: Unit): void {
     let friendlyOverlapCount = 0;
+    let speedLimit = Infinity;
     for (const friendly of this.units) {
       if (
         friendly === unit ||
@@ -1360,10 +1492,14 @@ export class Simulation {
         unit.position.x -= contact.normalX * correction;
         unit.position.y -= contact.normalY * correction;
         if (unit.engagementRecoveryTimer <= 0) {
-          unit.velocity *= other.faction === unit.faction ? 0.55 : 0.25;
+          speedLimit = Math.min(
+            speedLimit,
+            unit.movementSpeed * (other.faction === unit.faction ? 0.42 : 0.14),
+          );
         }
       }
     }
+    if (speedLimit < Infinity) unit.velocity = Math.min(unit.velocity, speedLimit);
   }
 
   private canSaxonPassFriendly(unit: Unit, other: Unit): boolean {
@@ -1997,7 +2133,6 @@ export class Simulation {
   }
 
   private updateAI(): void {
-    const crossingLoads = new Uint8Array(WATER_CROSSINGS.length);
     const targetLoads = new Map<string, number>();
     const slotUsage = new Map<string, EngagementSlotUsage>();
     const usageFor = (targetId: string): EngagementSlotUsage => {
@@ -2098,82 +2233,17 @@ export class Simulation {
         unit.aiEngagementArc = slot.arc;
         targetPosition = slot.position;
       }
-      const crossesDeepWater = this.battlefield.segmentCrossesDeepWater(unit.position, targetPosition);
-      let safeDestination = calculateSafeAIDestination(
+      const facing = Math.atan2(
+        target.position.y - unit.position.y,
+        target.position.x - unit.position.x,
+      ) + Math.PI / 2;
+      assignFormationMoveOrder(
         unit,
         targetPosition,
+        facing,
         this.battlefield,
-        crossingLoads,
-        unit.pathCrossingX,
       );
-      const crossingRequired = crossesDeepWater || (
-        unit.pathCrossingX !== undefined &&
-        Math.abs(safeDestination.x - unit.pathCrossingX) < 1
-      );
-      const crossingWaypoint = WATER_CROSSINGS.find((crossing) =>
-        Math.abs(safeDestination.x - crossing.x) < 1
-      );
-      const crossingX = crossingWaypoint?.x ?? unit.pathCrossingX;
-      if (crossingRequired && crossingX !== undefined) {
-        const currentBank = unit.position.y >=
-            this.battlefield.streamY(unit.position.x)
-          ? 1
-          : -1;
-        if (unit.crossingPhase === undefined) {
-          unit.crossingPhase = "approach";
-          unit.crossingOriginBank = currentBank;
-        }
-        unit.pathCrossingX = crossingX;
-        for (let index = 0; index < WATER_CROSSINGS.length; index += 1) {
-          const crossing = WATER_CROSSINGS[index];
-          if (crossing && Math.abs(crossingX - crossing.x) < 1) {
-            crossingLoads[index] = (crossingLoads[index] ?? 0) + 1;
-            break;
-          }
-        }
-
-        const originBank = unit.crossingOriginBank ?? currentBank;
-        const crossingClearance =
-          STREAM_HALF_WIDTH + formationRadius(unit) + 18;
-        const crossingLaneX = crossingX + unit.crossingLaneOffset;
-        const approach = {
-          x: crossingLaneX,
-          y: this.battlefield.streamY(crossingLaneX) +
-            originBank * crossingClearance,
-        };
-        const riverClearance = Math.abs(
-          unit.position.y - this.battlefield.streamY(unit.position.x),
-        );
-        if (
-          currentBank !== originBank
-        ) {
-          unit.crossingPhase = "clearing";
-        } else if (
-          Math.abs(unit.position.x - crossingX) <= 30 &&
-          riverClearance <= crossingClearance + 8
-        ) {
-          unit.crossingPhase = "crossing";
-        } else {
-          unit.crossingPhase = "approach";
-        }
-        if (unit.crossingPhase === "approach") safeDestination = approach;
-      } else {
-        unit.pathCrossingX = undefined;
-        unit.crossingLaneCommitted = false;
-        unit.crossingPhase = undefined;
-        unit.crossingOriginBank = undefined;
-      }
-      const targetBank = targetPosition.y >= this.battlefield.streamY(targetPosition.x) ? 1 : -1;
-      unit.order = {
-        type: "move",
-        destination: safeDestination,
-        facing: crossingRequired
-          ? targetBank > 0 ? Math.PI : 0
-          : Math.atan2(
-            target.position.y - unit.position.y,
-            target.position.x - unit.position.x,
-          ) + Math.PI / 2,
-      };
+      this.identifyRouteCrossing(unit, targetPosition);
     }
   }
 
@@ -2196,7 +2266,7 @@ export class Simulation {
       return true;
     }
 
-    this.saxonCrossingWaveWait += 2;
+    this.saxonCrossingWaveWait += AI_THINK_SECONDS;
     let ready = 0;
     for (const unit of this.units) {
       const crossingX = saxonGroupCrossingX(unit);
@@ -2313,21 +2383,15 @@ export class Simulation {
       unit.order = { type: "hold" };
       return;
     }
-    const destination = calculateSafeAIDestination(
+    assignFormationMoveOrder(
       unit,
       target,
-      this.battlefield,
-      undefined,
-      unit.pathCrossingX,
-    );
-    unit.order = {
-      type: "move",
-      destination,
-      facing: Math.atan2(
+      Math.atan2(
         centreY - unit.position.y,
         centreX - unit.position.x,
       ) + Math.PI / 2,
-    };
+      this.battlefield,
+    );
   }
 
   private recordFallen(unit: Unit, firstDeadIndex: number, casualties: number): void {

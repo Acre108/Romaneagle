@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assignFormationOrderPlacements,
   calculateFormationOrderLayout,
   FORMATION_ORDER_DRAG_THRESHOLD,
 } from "../units/FormationOrderLayout";
@@ -73,5 +74,25 @@ describe("formation-facing destination layout", () => {
     expect(layout.dragged).toBe(false);
     expect(layout.placements[0]?.destination).toEqual({ x: 400, y: 500 });
     expect(layout.placements[0]?.facing).toBeCloseTo(fallbackFacing);
+  });
+
+  it("preserves the units' existing left-to-right order", () => {
+    const layout = calculateFormationOrderLayout(
+      { x: 100, y: 200 },
+      { x: 500, y: 200 },
+      [{ frontageWidth: 80 }, { frontageWidth: 80 }, { frontageWidth: 80 }],
+      0,
+    );
+    const assignments = assignFormationOrderPlacements(
+      [{ x: 450, y: 400 }, { x: 150, y: 400 }, { x: 300, y: 400 }],
+      layout,
+    );
+
+    expect(assignments[1]?.destination.x).toBeLessThan(
+      assignments[2]?.destination.x ?? 0,
+    );
+    expect(assignments[2]?.destination.x).toBeLessThan(
+      assignments[0]?.destination.x ?? 0,
+    );
   });
 });

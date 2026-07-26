@@ -21,6 +21,8 @@ export const WATER_CROSSINGS = [
 ] as const;
 
 export class Battlefield {
+  readonly width = WORLD_WIDTH;
+  readonly height = WORLD_HEIGHT;
   readonly rough: TerrainPatch[] = [];
   readonly trees: Decoration[] = [];
   readonly rocks: Decoration[] = [];
@@ -96,6 +98,18 @@ export class Battlefield {
 
   isDeepWater(position: Vec2): boolean {
     return this.isDeepWaterAt(position.x, position.y);
+  }
+
+  isBlocked(position: Vec2): boolean {
+    return this.isDeepWater(position);
+  }
+
+  segmentBlocked(start: Vec2, end: Vec2): boolean {
+    return this.segmentCrossesDeepWater(start, end);
+  }
+
+  movementCost(position: Vec2): number {
+    return this.movementModifier(position);
   }
 
   isDeepWaterAt(x: number, y: number): boolean {

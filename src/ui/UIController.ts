@@ -82,11 +82,14 @@ export class UIController {
       this.order.textContent = focus.pathingState === "reorganising"
         ? `repathing ${focus.formationChangeTimer.toFixed(1)}s`
         : focus.pathingState === "fallback" ? "falling back"
+          : focus.pathingState === "blocked" ? "route blocked"
           : focus.aboutFacePending
             ? `about face ${focus.formationChangeTimer.toFixed(1)}s`
           : focus.formationChangeTimer > 0
         ? `reforming ${focus.formationChangeTimer.toFixed(1)}s`
-        : focus.state === "routing" ? "routing" : focus.order.type;
+        : focus.state === "routing" ? "routing"
+          : (focus.order.route?.length ?? 0) > 1 ? `${focus.order.type} via crossing`
+            : focus.order.type;
     } else {
       this.unitName.textContent = "No unit selected";
       this.unitType.textContent = "Drag or click to select Romans";

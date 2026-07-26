@@ -29,4 +29,23 @@ describe("formation wheeling", () => {
     expect(insideAfter.y).toBeCloseTo(insideBefore.y);
     expect(outsideAfter.y).toBeLessThan(outsideBefore.y);
   });
+
+  it("pivots the inside flank through a multi-step turn without reversing it", () => {
+    const unit = createPrototypeScenario()[0];
+    if (!unit) throw new Error("Scenario unit missing");
+    unit.position = { x: 400, y: 400 };
+    unit.facing = 0;
+    const halfWidth = formationHalfWidth(unit);
+    const pivot = { x: unit.position.x + halfWidth, y: unit.position.y };
+
+    for (let step = 0; step < 6; step += 1) {
+      wheelFormation(unit, Math.PI / 18);
+      const inside = {
+        x: unit.position.x + Math.cos(unit.facing) * halfWidth,
+        y: unit.position.y + Math.sin(unit.facing) * halfWidth,
+      };
+      expect(inside.x).toBeCloseTo(pivot.x);
+      expect(inside.y).toBeCloseTo(pivot.y);
+    }
+  });
 });

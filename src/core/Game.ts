@@ -14,7 +14,11 @@ import {
   formationRadius,
 } from "../units/formation";
 import { useUniqueAbility } from "../units/abilities";
-import { calculateFormationOrderLayout } from "../units/FormationOrderLayout";
+import {
+  assignFormationOrderPlacements,
+  calculateFormationOrderLayout,
+} from "../units/FormationOrderLayout";
+import { assignFormationMoveOrder } from "../units/FormationPathfinding";
 import {
   createEngagementSlotUsage,
   selectEngagementSlot,
@@ -363,20 +367,23 @@ export class Game {
       selected[0]?.facing ?? 0,
       { width: WORLD_WIDTH, height: WORLD_HEIGHT },
     );
+    const assignments = assignFormationOrderPlacements(
+      selected.map((unit) => unit.position),
+      layout,
+    );
     selected.forEach((unit, index) => {
-      const placement = layout.placements[index];
+      const placement = assignments[index];
       if (placement) {
-        unit.pathingState = "direct";
-        unit.stuckTimer = 0;
-        unit.fallbackDestination = undefined;
         unit.pathCrossingX = undefined;
         unit.crossingPhase = undefined;
         unit.crossingOriginBank = undefined;
-        unit.order = {
-          type: "move",
-          destination: placement.destination,
-          facing: placement.facing,
-        };
+        unit.crossingLaneCommitted = false;
+        assignFormationMoveOrder(
+          unit,
+          placement.destination,
+          placement.facing,
+          this.battlefield,
+        );
       }
     });
   }

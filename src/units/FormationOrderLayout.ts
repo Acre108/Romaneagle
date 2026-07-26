@@ -25,6 +25,39 @@ export interface FormationOrderLayout {
 }
 
 /**
+ * Matches units to frontage slots by their existing left-to-right position,
+ * avoiding the crossovers caused by selection-array order.
+ */
+export function assignFormationOrderPlacements(
+  origins: readonly Vec2[],
+  layout: FormationOrderLayout,
+): Array<FormationOrderPlacement | undefined> {
+  const axisX = Math.cos(layout.facing);
+  const axisY = Math.sin(layout.facing);
+  const originOrder = origins
+    .map((origin, index) => ({
+      index,
+      projection: origin.x * axisX + origin.y * axisY,
+    }))
+    .sort((a, b) => a.projection - b.projection || a.index - b.index);
+  const placementOrder = layout.placements
+    .map((placement, index) => ({
+      index,
+      projection:
+        placement.destination.x * axisX + placement.destination.y * axisY,
+    }))
+    .sort((a, b) => a.projection - b.projection || a.index - b.index);
+  const assignments: Array<FormationOrderPlacement | undefined> =
+    new Array(origins.length);
+  for (let rank = 0; rank < originOrder.length; rank += 1) {
+    const origin = originOrder[rank];
+    const placement = placementOrder[rank];
+    if (origin && placement) assignments[origin.index] = layout.placements[placement.index];
+  }
+  return assignments;
+}
+
+/**
  * Builds destinations along a shared frontage axis.
  *
  * A drag defines the complete frontage line and its direction. The unit's

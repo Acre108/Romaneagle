@@ -354,6 +354,156 @@ export function resolveEngagedOrder(
   return withMoraleOrder(state, () => resolveEngagedContacts(state, formationId, order, previewOptions));
 }
 
+/** The pressure rules a Battle or Press order fights under, shared by its preview and its resolution. */
+export function engagedPressureOptions(order: "battle" | "press", defenceRollOverride?: number) {
+  return {
+    allowAnyContact: true,
+    pressureBonus: order === "press" ? BALANCE.pressPressureBonus : 0,
+    damagePenalty: order === "press" ? BALANCE.pressDamagePenalty : 0,
+    pushThreshold: order === "battle" ? BALANCE.battlePushPressureThreshold : BALANCE.pushPressureThreshold,
+    defenceRollOverride,
+  };
+}
+
+/** Everything one Battle or Press order tracks while its contacts are fought. */
+interface EngagedFight {
+  order: "battle" | "press";
+  defenceRollOverride: number | undefined;
+  startingFrontRanks: ReadonlyMap<string, number>;
+  movementExclusions: Set<string>;
+  counteredDefenders: Set<string>;
+  resolved: number;
+  counterattacks: number;
+}
+
+function formationFootprint(state: GameState, formation: Formation) {
+  const blocks = formationBlocks(state, formation);
+  return {
+    minX: Math.min(...blocks.map((block) => block.position.x)),
+    maxX: Math.max(...blocks.map((block) => block.position.x)),
+    minY: Math.min(...blocks.map((block) => block.position.y)),
+    maxY: Math.max(...blocks.map((block) => block.position.y)),
+  };
+}
+
+const CONTACT_EDGE_PRIORITY = { front: 0, side: 1, rear: 2 } as const;
+
+/** Each side's morale reacts once to the whole order: its worst exposed edge and who it now faces. */
+function applyContactMoraleShocks(state: GameState, contacts: readonly EngagedContact[]): void {
+  const shocks = new Map<string, {
+    formationId: string;
+    enemyFormationIds: Set<string>;
+    worstContactEdge: "front" | "side" | "rear";
+  }>();
+  const register = (target: TroopBlock, enemy: TroopBlock): void => {
+    const targetFormation = target.formationId ? state.formations[target.formationId] : undefined;
+    const incoming = directionBetween(target.position, enemy.position);
+    if (!targetFormation || !incoming || !enemy.formationId) return;
+    const contactEdge = formationEdgeType(targetFormation.facing, incoming);
+    const key = targetFormation.provisionalFamilyId ?? targetFormation.id;
+    const shock = shocks.get(key) ?? {
+      formationId: targetFormation.id,
+      enemyFormationIds: new Set<string>(),
+      worstContactEdge: "front" as const,
+    };
+    shock.enemyFormationIds.add(enemy.formationId);
+    if (CONTACT_EDGE_PRIORITY[contactEdge] > CONTACT_EDGE_PRIORITY[shock.worstContactEdge]) shock.worstContactEdge = contactEdge;
+    shocks.set(key, shock);
+  };
+  for (const contact of contacts) {
+    const attacker = state.blocks[contact.attackerId];
+    const defender = state.blocks[contact.defenderId];
+    if (!attacker || !defender) continue;
+    register(defender, attacker);
+    register(attacker, defender);
+  }
+  for (const shock of shocks.values()) {
+    applyTacticalMoraleShock(state, shock.formationId, [...shock.enemyFormationIds], shock.worstContactEdge);
+  }
+}
+
+function resolveCounterattack(state: GameState, fight: EngagedFight, attacker: TroopBlock, defender: TroopBlock, position: GridPosition, counter: NonNullable<ReturnType<typeof meleeDamagePreview>>): void {
+  fight.counteredDefenders.add(defender.id);
+  fight.counterattacks += 1;
+  emitEvent(
+    state,
+    "counterattack_resolved",
+    `${defender.id} counterattacked ${attacker.id} for ${counter.expectedCasualties} ${counter.expectedCasualties === 1 ? "casualty" : "casualties"}.`,
+    {
+      blockIds: [defender.id, attacker.id],
+      formationIds: [defender.formationId, attacker.formationId].filter((id): id is string => Boolean(id)),
+      position,
+      casualties: counter.expectedCasualties,
+    },
+  );
+  damageBlock(state, attacker.id, counter.expectedDamage, "counterattack");
+}
+
+/** After winning ground: Press always follows it up, Battle only dresses a lagging file up to its starting front. */
+function followUpVacatedGround(state: GameState, fight: EngagedFight, attacker: TroopBlock, attackerOrigin: GridPosition, defenderOrigin: GridPosition): void {
+  const survivingAttacker = state.blocks[attacker.id];
+  const attackerFormation = attacker.formationId ? state.formations[attacker.formationId] : undefined;
+  if (!survivingAttacker || !attackerFormation) return;
+  const follows = fight.order === "press" || canDressBattleLine(
+    state,
+    attackerFormation,
+    survivingAttacker,
+    attackerOrigin,
+    defenderOrigin,
+    fight.startingFrontRanks.get(attackerFormation.id) ?? Number.NEGATIVE_INFINITY,
+  );
+  if (!follows) return;
+  for (const movedId of advanceCombatFile(state, attackerFormation, attacker.id, attackerOrigin, defenderOrigin)) {
+    fight.movementExclusions.add(movedId);
+    const moved = state.blocks[movedId];
+    if (fight.order === "press" && moved) moved.overextended = true;
+  }
+}
+
+function fightContact(state: GameState, fight: EngagedFight, contact: EngagedContact): void {
+  const attacker = state.blocks[contact.attackerId];
+  const defender = state.blocks[contact.defenderId];
+  if (!attacker || !defender) return;
+  const attackerOrigin = { ...attacker.position };
+  const defenderOrigin = { ...defender.position };
+  const counter = !attacker.isContested && !defender.isContested && !fight.counteredDefenders.has(defender.id)
+    ? meleeDamagePreview(state, defender.id, attacker.id, fight.defenceRollOverride)
+    : null;
+  const options = engagedPressureOptions(fight.order, fight.defenceRollOverride);
+  if (!pressurePreview(state, contact.attackerId, contact.defenderId, options)) return;
+  const result = resolvePressure(state, contact.attackerId, contact.defenderId, options);
+  if (!result.ok) return;
+  fight.resolved += 1;
+  const cleanBattleShove = fight.order === "battle" && Boolean(state.blocks[defender.id]) && (result.vacated || result.compressed);
+  if (counter && !cleanBattleShove) resolveCounterattack(state, fight, attacker, defender, attackerOrigin, counter);
+  if (result.vacated) followUpVacatedGround(state, fight, attacker, attackerOrigin, defenderOrigin);
+}
+
+/** Rear ranks close up behind the fight. In a Battle, blocks that close a gap fight immediately. */
+function closeGapsAndRefill(
+  state: GameState,
+  fight: EngagedFight,
+  participants: readonly Formation[],
+  startingFootprints: ReadonlyMap<string, ReturnType<typeof formationFootprint>>,
+): void {
+  const gapCloserIds = new Set<string>();
+  for (const participant of participants) {
+    if (!state.formations[participant.id]) continue;
+    const footprint = fight.order === "battle" ? startingFootprints.get(participant.id) : undefined;
+    for (const movedId of consolidateTowardEnemy(state, participant.id, false, fight.movementExclusions, footprint)) gapCloserIds.add(movedId);
+  }
+  if (fight.order === "battle" && gapCloserIds.size > 0) {
+    const closingContacts = participants
+      .filter((participant) => state.formations[participant.id])
+      .flatMap((participant) => engagedContacts(state, participant.id))
+      .filter((contact) => gapCloserIds.has(contact.attackerId));
+    for (const contact of closingContacts) fightContact(state, fight, contact);
+  }
+  for (const participant of participants) {
+    if (state.formations[participant.id]) refillFormationFront(state, participant.id);
+  }
+}
+
 function resolveEngagedContacts(
   state: GameState,
   formationId: string,
@@ -364,165 +514,30 @@ function resolveEngagedContacts(
   if (!formation || !formationIsEngaged(state, formationId)) return 0;
   const participants = provisionalFormationFamily(state, formationId)
     .filter((candidate) => formationIsEngaged(state, candidate.id));
-  const startingFootprints = new Map(participants.map((participant) => {
-    const blocks = formationBlocks(state, participant);
-    return [participant.id, {
-      minX: Math.min(...blocks.map((block) => block.position.x)),
-      maxX: Math.max(...blocks.map((block) => block.position.x)),
-      minY: Math.min(...blocks.map((block) => block.position.y)),
-      maxY: Math.max(...blocks.map((block) => block.position.y)),
-    }] as const;
-  }));
-  const startingFrontRanks = new Map(participants.map((participant) => [
-    participant.id,
-    Math.max(...formationBlocks(state, participant).map((block) => forwardRank(block.position, participant.facing))),
-  ] as const));
+  const startingFootprints = new Map(participants.map((participant) => [participant.id, formationFootprint(state, participant)] as const));
   const contacts = participants.flatMap((candidate) => engagedContacts(state, candidate.id));
-  const movementExclusions = new Set<string>();
-  const counteredDefenders = new Set<string>();
-  const tacticalShocks = new Map<string, {
-    formationId: string;
-    enemyFormationIds: Set<string>;
-    worstContactEdge: "front" | "side" | "rear";
-  }>();
-  const registerTacticalContact = (
-    target: TroopBlock,
-    enemy: TroopBlock,
-    contactEdge: "front" | "side" | "rear",
-  ): void => {
-    if (!target.formationId || !enemy.formationId) return;
-    const targetFormation = state.formations[target.formationId];
-    if (!targetFormation) return;
-    const key = targetFormation.provisionalFamilyId ?? targetFormation.id;
-    const existing = tacticalShocks.get(key) ?? {
-      formationId: targetFormation.id,
-      enemyFormationIds: new Set<string>(),
-      worstContactEdge: "front" as const,
-    };
-    existing.enemyFormationIds.add(enemy.formationId);
-    const priority = { front: 0, side: 1, rear: 2 } as const;
-    if (priority[contactEdge] > priority[existing.worstContactEdge]) existing.worstContactEdge = contactEdge;
-    tacticalShocks.set(key, existing);
+  const fight: EngagedFight = {
+    order,
+    defenceRollOverride: previewOptions.defenceRollOverride,
+    startingFrontRanks: new Map(participants.map((participant) => [
+      participant.id,
+      Math.max(...formationBlocks(state, participant).map((block) => forwardRank(block.position, participant.facing))),
+    ] as const)),
+    movementExclusions: new Set(),
+    counteredDefenders: new Set(),
+    resolved: 0,
+    counterattacks: 0,
   };
-  for (const contact of contacts) {
-    const attacker = state.blocks[contact.attackerId];
-    const defender = state.blocks[contact.defenderId];
-    if (!attacker || !defender) continue;
-    const defenderIncoming = directionBetween(defender.position, attacker.position);
-    const attackerIncoming = directionBetween(attacker.position, defender.position);
-    const defenderFormation = defender.formationId ? state.formations[defender.formationId] : undefined;
-    const attackerFormation = attacker.formationId ? state.formations[attacker.formationId] : undefined;
-    if (defenderIncoming && defenderFormation) registerTacticalContact(
-      defender,
-      attacker,
-      formationEdgeType(defenderFormation.facing, defenderIncoming),
-    );
-    if (attackerIncoming && attackerFormation) registerTacticalContact(
-      attacker,
-      defender,
-      formationEdgeType(attackerFormation.facing, attackerIncoming),
-    );
-  }
-  for (const shock of tacticalShocks.values()) {
-    applyTacticalMoraleShock(
-      state,
-      shock.formationId,
-      [...shock.enemyFormationIds],
-      shock.worstContactEdge,
-    );
-  }
-  let resolved = 0;
-  let counterattacks = 0;
-  const resolveContact = (contact: EngagedContact): boolean => {
-    const attacker = state.blocks[contact.attackerId];
-    const defender = state.blocks[contact.defenderId];
-    if (!attacker || !defender) return false;
-    const attackerOrigin = { ...attacker.position };
-    const defenderOrigin = { ...defender.position };
-    const counter = !attacker.isContested && !defender.isContested && !counteredDefenders.has(defender.id)
-      ? meleeDamagePreview(state, defender.id, attacker.id, previewOptions.defenceRollOverride)
-      : null;
-    const options = {
-      allowAnyContact: true,
-      pressureBonus: order === "press" ? BALANCE.pressPressureBonus : 0,
-      damagePenalty: order === "press" ? BALANCE.pressDamagePenalty : 0,
-      pushThreshold: order === "battle" ? BALANCE.battlePushPressureThreshold : BALANCE.pushPressureThreshold,
-      defenceRollOverride: previewOptions.defenceRollOverride,
-    };
-    if (!pressurePreview(state, contact.attackerId, contact.defenderId, options)) return false;
-    const result = resolvePressure(state, contact.attackerId, contact.defenderId, options);
-    if (!result.ok) return false;
-    resolved += 1;
-    const cleanBattleShove = order === "battle" && Boolean(state.blocks[defender.id]) && (result.vacated || result.compressed);
-    if (counter && !cleanBattleShove) {
-      counteredDefenders.add(defender.id);
-      counterattacks += 1;
-      emitEvent(
-        state,
-        "counterattack_resolved",
-        `${defender.id} counterattacked ${attacker.id} for ${counter.expectedCasualties} ${counter.expectedCasualties === 1 ? "casualty" : "casualties"}.`,
-        {
-          blockIds: [defender.id, attacker.id],
-          formationIds: [defender.formationId, attacker.formationId].filter((id): id is string => Boolean(id)),
-          position: attackerOrigin,
-          casualties: counter.expectedCasualties,
-        },
-      );
-      damageBlock(state, attacker.id, counter.expectedDamage, "counterattack");
-    }
-    const survivingAttacker = state.blocks[contact.attackerId];
-    if (result.vacated && survivingAttacker) {
-      const attackerFormation = attacker.formationId ? state.formations[attacker.formationId] : undefined;
-      const dressesBattleLine = order === "battle" && attackerFormation
-        ? canDressBattleLine(
-          state,
-          attackerFormation,
-          survivingAttacker,
-          attackerOrigin,
-          defenderOrigin,
-          startingFrontRanks.get(attackerFormation.id) ?? Number.NEGATIVE_INFINITY,
-        )
-        : false;
-      if (attackerFormation && (order === "press" || dressesBattleLine)) {
-        for (const movedId of advanceCombatFile(state, attackerFormation, contact.attackerId, attackerOrigin, defenderOrigin)) {
-          movementExclusions.add(movedId);
-          const moved = state.blocks[movedId];
-          if (order === "press" && moved) moved.overextended = true;
-        }
-      }
-    }
-    return true;
-  };
-  for (const contact of contacts) resolveContact(contact);
-  if (resolved > 0) {
-    const gapCloserIds = new Set<string>();
-    for (const participant of participants) {
-      if (state.formations[participant.id]) {
-        for (const movedId of consolidateTowardEnemy(
-          state,
-          participant.id,
-          false,
-          movementExclusions,
-          order === "battle" ? startingFootprints.get(participant.id) : undefined,
-        )) gapCloserIds.add(movedId);
-      }
-    }
-    if (order === "battle" && gapCloserIds.size > 0) {
-      const closingContacts = participants
-        .filter((participant) => state.formations[participant.id])
-        .flatMap((participant) => engagedContacts(state, participant.id))
-        .filter((contact) => gapCloserIds.has(contact.attackerId));
-      for (const contact of closingContacts) resolveContact(contact);
-    }
-    for (const participant of participants) {
-      if (state.formations[participant.id]) refillFormationFront(state, participant.id);
-    }
-    const groupDescription = participants.length > 1 ? ` across ${participants.length} provisional groups` : "";
-    emitEvent(state, "engaged_order_resolved", `${formation.name} chose to ${order}; ${resolved} block${resolved === 1 ? "" : "s"} fought and ${counterattacks} defender${counterattacks === 1 ? "" : "s"} counterattacked${groupDescription}.`, {
-      blockIds: participants.flatMap((candidate) => candidate.blockIds),
-      formationIds: participants.map((candidate) => candidate.id),
-      detail: { kind: "engaged_order", order },
-    });
-  }
+  applyContactMoraleShocks(state, contacts);
+  for (const contact of contacts) fightContact(state, fight, contact);
+  if (fight.resolved === 0) return 0;
+  closeGapsAndRefill(state, fight, participants, startingFootprints);
+  const { resolved, counterattacks } = fight;
+  const groupDescription = participants.length > 1 ? ` across ${participants.length} provisional groups` : "";
+  emitEvent(state, "engaged_order_resolved", `${formation.name} chose to ${order}; ${resolved} block${resolved === 1 ? "" : "s"} fought and ${counterattacks} defender${counterattacks === 1 ? "" : "s"} counterattacked${groupDescription}.`, {
+    blockIds: participants.flatMap((candidate) => candidate.blockIds),
+    formationIds: participants.map((candidate) => candidate.id),
+    detail: { kind: "engaged_order", order },
+  });
   return resolved;
 }

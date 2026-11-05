@@ -1,9 +1,8 @@
-import { BALANCE } from "../model/config";
 import type { Formation, GameState, OrderConfirmationPreview, PressurePreview } from "../model/types";
 import { chargeConfirmationPreview, pressurePreview } from "../rules/combat";
 import { aggregateCombatOutcomes, blockCombatMath, contactSummaryLines } from "../rules/combatPreview";
 import { oppositeDirection } from "../rules/direction";
-import { engagedContacts, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";
+import { engagedContacts, engagedPressureOptions, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";
 import { planFormationMove } from "../rules/movement";
 import { provisionalFormationFamily } from "../rules/splitting";
 import { rangedConfirmationPreview } from "../rules/rangedCombat";
@@ -112,12 +111,7 @@ function planEngagedCombat(
   };
   const contactPreviews: PressurePreview[] = [];
   for (const contact of contacts) {
-    const preview = pressurePreview(state, contact.attackerId, contact.defenderId, {
-      allowAnyContact: true,
-      pressureBonus: command.type === "press" ? BALANCE.pressPressureBonus : 0,
-      damagePenalty: command.type === "press" ? BALANCE.pressDamagePenalty : 0,
-      pushThreshold: command.type === "battle" ? BALANCE.battlePushPressureThreshold : BALANCE.pushPressureThreshold,
-    });
+    const preview = pressurePreview(state, contact.attackerId, contact.defenderId, engagedPressureOptions(command.type));
     if (!preview) continue;
     contactPreviews.push(preview);
     appendMath(contact.attackerId, blockCombatMath(preview, "attacker"));

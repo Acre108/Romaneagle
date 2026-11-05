@@ -1057,6 +1057,90 @@ export function resolveCharge(
   return withMoraleOrder(state, () => resolveChargeContacts(state, attackerId, defenderId, options));
 }
 
+function advanceChargingFile(state: GameState, formation: Formation, attackerId: string, attackerOrigin: GridPosition, defenderOrigin: GridPosition): string[] {
+  return advanceCombatFile(state, formation, attackerId, attackerOrigin, defenderOrigin, {
+    reason: "charge",
+    stopAtWavering: false,
+  });
+}
+
+/** Infantry hit once with a pressure bonus fixed when the charge landed, then follow up if the enemy gives way. */
+function resolveInfantryContact(
+  state: GameState,
+  formation: Formation,
+  contact: FormationChargeContact & ReturnType<typeof infantryChargeBonusForContact>,
+  options: Pick<PressureOptions, "defenceRollOverride">,
+): void {
+  const attacker = state.blocks[contact.attackerId];
+  const defender = state.blocks[contact.defenderId];
+  if (!attacker || !defender) return;
+  const attackerOrigin = { ...attacker.position };
+  const defenderOrigin = { ...defender.position };
+  emitEvent(state, "charge_impact", contact.bonusNullified
+    ? `${attacker.id}'s charge bonus was stopped by the braced front.`
+    : `${attacker.id} gained +${contact.attackBonus} pressure from the charge.`, {
+    blockIds: [attacker.id, defender.id], formationIds: [formation.id], position: { ...defender.position },
+  });
+  const result = resolvePressure(state, attacker.id, defender.id, {
+    pressureBonus: contact.attackBonus,
+    defenceRollOverride: options.defenceRollOverride,
+  });
+  if (result.vacated && state.blocks[attacker.id]) advanceChargingFile(state, formation, attacker.id, attackerOrigin, defenderOrigin);
+}
+
+/** A cavalry block spends momentum on each collision and rides on down its lane while the enemy keeps giving way. */
+function resolveCavalryLane(
+  state: GameState,
+  formation: Formation,
+  contact: FormationChargeContact,
+  startingMomentum: number,
+  options: Pick<PressureOptions, "defenceRollOverride">,
+): void {
+  const attacker = state.blocks[contact.attackerId];
+  if (!attacker) return;
+  attacker.chargeMomentum = startingMomentum;
+  let currentDefenderId: string | null = contact.defenderId;
+  while (currentDefenderId && attacker.chargeMomentum > 0 && state.blocks[attacker.id]) {
+    const currentDefender = state.blocks[currentDefenderId];
+    if (!currentDefender) break;
+    const attackerOrigin = { ...attacker.position };
+    const defenderOrigin = { ...currentDefender.position };
+    const incomingDirection = directionBetween(currentDefender.position, attacker.position);
+    const defenderFormation = currentDefender.formationId ? state.formations[currentDefender.formationId] : undefined;
+    if (defenderFormation?.isBraced && hasEquipment(defenderFormation, "brace_against_charge")
+      && incomingDirection === blockFacing(state, currentDefender.id) && !blockIsWavering(state, currentDefender.id)) {
+      damageBlock(state, attacker.id, 1, "braced spears");
+      if (!state.blocks[attacker.id]) break;
+    }
+    const impact = Math.max(1, Math.floor(attacker.chargeMomentum / 3));
+    emitEvent(state, "charge_impact", `${attacker.id} inflicted ${impact} impact damage with ${attacker.chargeMomentum} momentum.`, {
+      blockIds: [attacker.id, currentDefender.id], position: { ...currentDefender.position },
+    });
+    const destroyed = damageBlock(state, currentDefender.id, impact, "charge impact");
+    let advanced = destroyed;
+    if (!destroyed) {
+      const pressureResult = resolvePressure(state, attacker.id, currentDefender.id, {
+        pressureBonus: attacker.chargeMomentum,
+        cavalryCharge: true,
+        defenceRollOverride: options.defenceRollOverride,
+      });
+      advanced = pressureResult.vacated;
+    }
+    if (advanced && state.blocks[attacker.id]) {
+      advanced = advanceChargingFile(state, formation, attacker.id, attackerOrigin, defenderOrigin).length > 0;
+    }
+    attacker.chargeMomentum = Math.max(0, attacker.chargeMomentum - BALANCE.chargeCollisionCost - BALANCE.chargeAdvanceCost);
+    if (!advanced) {
+      if (attacker.chargeMomentum <= 0 && state.blocks[currentDefender.id]) createContestedCell(state, attacker.id, currentDefender.id);
+      break;
+    }
+    if (attacker.isContested || attacker.chargeMomentum <= 0) break;
+    const nextPosition = addPosition(attacker.position, directionVector(formation.facing));
+    if (!terrainAllowsCharge(terrainAt(state, nextPosition))) attacker.chargeMomentum = 0;
+    currentDefenderId = enemyBlockAt(state, nextPosition, attacker.factionId)?.id ?? null;
+  }
+}
+
 function resolveChargeContacts(
   state: GameState,
   attackerId: string,
@@ -1065,92 +1149,18 @@ function resolveChargeContacts(
 ): boolean {
   const preview = chargePreview(state, attackerId, defenderId);
   if (!preview) return false;
-  const initiatingAttacker = state.blocks[attackerId]!;
-  const formation = state.formations[initiatingAttacker.formationId!]!;
+  const formation = state.formations[state.blocks[attackerId]!.formationId!]!;
   if (!translateChargingFormation(state, formation.id, preview)) return false;
   const chargeContacts = formationChargeContacts(state, formation);
-  if (!isCavalry(preview.unitType)) {
-    const contactsWithBonuses = chargeContacts.map((contact) => {
-      const attacker = state.blocks[contact.attackerId]!;
-      const defender = state.blocks[contact.defenderId]!;
-      return { ...contact, ...infantryChargeBonusForContact(state, attacker, defender) };
-    });
-    for (const contact of contactsWithBonuses) {
-      const attacker = state.blocks[contact.attackerId];
-      const defender = state.blocks[contact.defenderId];
-      if (!attacker || !defender) continue;
-      const attackerOrigin = { ...attacker.position };
-      const defenderOrigin = { ...defender.position };
-      const bonus = contact;
-      emitEvent(state, "charge_impact", bonus.bonusNullified
-        ? `${attacker.id}'s charge bonus was stopped by the braced front.`
-        : `${attacker.id} gained +${bonus.attackBonus} pressure from the charge.`, {
-        blockIds: [attacker.id, defender.id], formationIds: [formation.id], position: { ...defender.position },
-      });
-      const result = resolvePressure(state, attacker.id, defender.id, {
-        pressureBonus: bonus.attackBonus,
-        defenceRollOverride: options.defenceRollOverride,
-      });
-      if (result.vacated && state.blocks[attacker.id]) {
-        advanceCombatFile(state, formation, attacker.id, attackerOrigin, defenderOrigin, {
-          reason: "charge",
-          stopAtWavering: false,
-        });
-      }
-    }
-    formation.hasActivated = true;
-    formation.movementRemaining = 0;
-    recalculateAllConnectivity(state);
-    return true;
-  }
-  for (const contact of chargeContacts) {
-    const attacker = state.blocks[contact.attackerId];
-    if (!attacker) continue;
-    attacker.chargeMomentum = preview.momentum;
-    let currentDefenderId: string | null = contact.defenderId;
-    while (currentDefenderId && attacker.chargeMomentum > 0 && state.blocks[attacker.id]) {
-      const currentDefender = state.blocks[currentDefenderId];
-      if (!currentDefender) break;
-      const attackerOrigin = { ...attacker.position };
-      const defenderOrigin = { ...currentDefender.position };
-      const incomingDirection = directionBetween(currentDefender.position, attacker.position);
-      const defenderFormation = currentDefender.formationId ? state.formations[currentDefender.formationId] : undefined;
-      if (defenderFormation?.isBraced && hasEquipment(defenderFormation, "brace_against_charge")
-        && incomingDirection === blockFacing(state, currentDefender.id) && !blockIsWavering(state, currentDefender.id)) {
-        damageBlock(state, attacker.id, 1, "braced spears");
-        if (!state.blocks[attacker.id]) break;
-      }
-      const impact = Math.max(1, Math.floor(attacker.chargeMomentum / 3));
-      emitEvent(state, "charge_impact", `${attacker.id} inflicted ${impact} impact damage with ${attacker.chargeMomentum} momentum.`, {
-        blockIds: [attacker.id, currentDefender.id], position: { ...currentDefender.position },
-      });
-      const destroyed = damageBlock(state, currentDefender.id, impact, "charge impact");
-      let advanced = destroyed;
-      if (!destroyed) {
-        const pressureResult = resolvePressure(state, attacker.id, currentDefender.id, {
-          pressureBonus: attacker.chargeMomentum,
-          cavalryCharge: true,
-          defenceRollOverride: options.defenceRollOverride,
-        });
-        advanced = pressureResult.vacated;
-      }
-      if (advanced && state.blocks[attacker.id]) {
-        advanced = advanceCombatFile(state, formation, attacker.id, attackerOrigin, defenderOrigin, {
-          reason: "charge",
-          stopAtWavering: false,
-        }).length > 0;
-      }
-      attacker.chargeMomentum = Math.max(0, attacker.chargeMomentum - BALANCE.chargeCollisionCost - BALANCE.chargeAdvanceCost);
-      if (!advanced) {
-        if (attacker.chargeMomentum <= 0 && state.blocks[currentDefender.id]) createContestedCell(state, attacker.id, currentDefender.id);
-        break;
-      }
-      if (attacker.isContested || attacker.chargeMomentum <= 0) break;
-      const nextPosition = addPosition(attacker.position, directionVector(formation.facing));
-      const nextTerrain = terrainAt(state, nextPosition);
-      if (!terrainAllowsCharge(nextTerrain)) attacker.chargeMomentum = 0;
-      currentDefenderId = enemyBlockAt(state, nextPosition, attacker.factionId)?.id ?? null;
-    }
+  if (isCavalry(preview.unitType)) {
+    for (const contact of chargeContacts) resolveCavalryLane(state, formation, contact, preview.momentum, options);
+  } else {
+    // Bonuses are fixed for every contact before any of them fights, so earlier shoves cannot change later ones.
+    const contactsWithBonuses = chargeContacts.map((contact) => ({
+      ...contact,
+      ...infantryChargeBonusForContact(state, state.blocks[contact.attackerId]!, state.blocks[contact.defenderId]!),
+    }));
+    for (const contact of contactsWithBonuses) resolveInfantryContact(state, formation, contact, options);
   }
   formation.hasActivated = true;
   formation.movementRemaining = 0;

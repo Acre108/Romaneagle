@@ -7,7 +7,7 @@ import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import { BALANCE } from "../model/config";
 import type { BattleAction, Direction, FactionId, Formation, GameState, GridPosition, OrderConfirmationPreview, TroopBlock } from "../model/types";
-import { chargePreview } from "../rules/combat";
+import { chargePreview } from "../rules/charge";
 import { mergeCandidates } from "../rules/formationActions";
 import { moveDirectionFromCell, planFormationMove } from "../rules/movement";
 import { formationIsEngaged } from "../rules/engagement";

@@ -1,5 +1,6 @@
 import type { Formation, GameState, OrderConfirmationPreview, PressurePreview } from "../model/types";
-import { chargeConfirmationPreview, pressurePreview } from "../rules/combat";
+import { chargeConfirmationPreview } from "../rules/charge";
+import { pressurePreview } from "../rules/combat";
 import { aggregateCombatOutcomes, blockCombatMath, contactSummaryLines } from "../rules/combatPreview";
 import { oppositeDirection } from "../rules/direction";
 import { engagedContacts, engagedPressureOptions, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";

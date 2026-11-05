@@ -1,5 +1,6 @@
 import type { GameState } from "../model/types";
-import { createContestedCell, damageBlock, resolveContestedMelees, resolveDuels, retreatBlock } from "../rules/combat";
+import { createContestedCell, damageBlock, retreatBlock } from "../rules/combat";
+import { resolveContestedMelees, resolveDuels } from "../rules/contestedMelee";
 import { forceSplit } from "../rules/formationActions";
 import { resolveRoutingFormationActivation } from "../rules/routing";
 import { provisionalFormationFamily, recalculateAllConnectivity } from "../rules/splitting";

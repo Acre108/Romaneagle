@@ -32,7 +32,8 @@ import {
   type BlockSlotMask,
   type ContestedBlockSlotOccupancy,
 } from "../model/blockSlots";
-import { attackingPressure, chargePreview, defendingResistance } from "../rules/combat";
+import { attackingPressure, defendingResistance } from "../rules/combat";
+import { chargePreview } from "../rules/charge";
 import { addPosition, directionVector, oppositeDirection } from "../rules/direction";
 import { legalReformDestinations } from "../rules/formationActions";
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";

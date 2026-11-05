@@ -1,7 +1,7 @@
 import { BALANCE } from "../model/config";
 import type { FactionId, Formation, GameState } from "../model/types";
 import { emitEvent } from "../events/events";
-import { resolveContestedMelees, resolveDuels } from "./combat";
+import { resolveContestedMelees, resolveDuels } from "./contestedMelee";
 import { refillFormationFront } from "./engagement";
 import { resolveEndActivationRegrouping } from "./regrouping";
 import { provisionalFormationFamily, recalculateFormationConnectivity } from "./splitting";

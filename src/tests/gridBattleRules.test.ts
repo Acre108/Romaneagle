@@ -1,22 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { occupancyAt } from "../gridBattle/model/occupancy";
-import {
-  attackingPressure,
-  applyTacticalMoraleShock,
-  chargeConfirmationPreview,
-  chargePreview,
-  createContestedCell,
-  damageBlock,
-  defendingResistance,
-  meleeDamagePreview,
-  pressurePreview,
-  rearSupport,
-  resolveCharge,
-  resolveContestedMelees,
-  resolveDuels,
-  resolvePressure,
-  retreatBlock,
-} from "../gridBattle/rules/combat";
+import { attackingPressure, createContestedCell, damageBlock, defendingResistance, meleeDamagePreview, pressurePreview, rearSupport, resolvePressure, retreatBlock } from "../gridBattle/rules/combat";
+import { applyTacticalMoraleShock } from "../gridBattle/rules/morale";
+import { chargeConfirmationPreview, chargePreview, resolveCharge } from "../gridBattle/rules/charge";
+import { resolveContestedMelees, resolveDuels } from "../gridBattle/rules/contestedMelee";
 import { directionVector, formationEdgeType, isCardinalStep } from "../gridBattle/rules/direction";
 import { mergeFormations, reformBlock } from "../gridBattle/rules/formationActions";
 import { blockIsWavering, closeEngagementGaps, engagedContacts, fallBackFormation, formationIsEngaged, refillFormationFront, resolveEngagedOrder } from "../gridBattle/rules/engagement";

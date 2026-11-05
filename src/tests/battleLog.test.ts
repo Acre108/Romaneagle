@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveCharge } from "../gridBattle/rules/charge";
 import { resolveEngagedOrder } from "../gridBattle/rules/engagement";
 import { battleLogEntries } from "../gridBattle/rules/battleLog";
 import { endFormationActivation } from "../gridBattle/rules/turnSystem";
@@ -80,6 +81,16 @@ describe("the battle log", () => {
       details: ["Great Warband regrouped from 3 bodies into 1."],
       moraleNotes: ["Great Warband fled 4 squares."],
     });
+  });
+
+  it("marks a real charge so the renderer can animate it without reading the message", () => {
+    const state = blankState(8, 8);
+    addFormation(state, "romans", [{ x: 3, y: 1 }], "south", "roman");
+    addFormation(state, "saxons", [{ x: 3, y: 3 }], "north", "saxon");
+
+    expect(resolveCharge(state, "romans-b1", "saxons-b1")).toBe(true);
+
+    expect(state.eventLog.find((event) => event.type === "formation_moved")?.detail).toEqual({ kind: "charge" });
   });
 
   it("reads a real order without leaking internal wording", () => {

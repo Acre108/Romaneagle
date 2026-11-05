@@ -1,7 +1,8 @@
 import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import type { BattleAction, Direction, Formation, GameState, GridPosition } from "../model/types";
-import { chargePreview, clearOrphanedContestedFlags, resolveCharge } from "../rules/combat";
+import { chargePreview, resolveCharge } from "../rules/charge";
+import { clearOrphanedContestedFlags } from "../rules/combat";
 import { legalReformDestinations, mergeCandidates, mergeFormations, reformBlock, transferCharacter } from "../rules/formationActions";
 import { canTranslateFormation, finishFormationMove, translateFormation, turnFormation } from "../rules/movement";
 import { canFallBack, engagedContacts, fallBackFormation, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";

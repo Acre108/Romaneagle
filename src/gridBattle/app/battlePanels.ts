@@ -4,7 +4,8 @@ import { blockHitPoints, formationPressure, formationResistance, isCavalry } fro
 import { blockFacing } from "../rules/blockFacing";
 import { battleLogEntries } from "../rules/battleLog";
 import type { MissionObjectiveDefinition } from "../rules/campaignObjectives";
-import { attackingPressure, chargeConfirmationPreview, chargePreview, defendingResistance, rearSupport } from "../rules/combat";
+import { attackingPressure, defendingResistance, rearSupport } from "../rules/combat";
+import { chargeConfirmationPreview, chargePreview } from "../rules/charge";
 import { oppositeDirection, rotateDirection } from "../rules/direction";
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
 import { moraleWord } from "../rules/formationPlates";

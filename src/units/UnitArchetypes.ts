@@ -49,7 +49,6 @@ export type UnitClass =
   | "warband"
   | "skirmishers";
 export type ArmourClass = "light" | "medium" | "heavy";
-export type SpeedClass = "very slow" | "slow" | "medium" | "fast";
 
 /** What a unit brings to the grid battle and its cards. Grid stats are derived from these in the scenario builders. */
 export interface UnitArchetypeProfile {
@@ -62,7 +61,6 @@ export interface UnitArchetypeProfile {
   defaultStrength: number;
   spacing: FormationSpacing;
   armourClass: ArmourClass;
-  speedClass: SpeedClass;
   startingMorale: number;
   hasShield: boolean;
   rangedWeapon?: RangedWeaponProfile;
@@ -80,7 +78,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 80,
     spacing: "close",
     armourClass: "medium",
-    speedClass: "slow",
     startingMorale: 84,
     hasShield: true,
     tacticalIdentity: "Holds ground cheaply; dependable in forts and streets",
@@ -95,7 +92,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 80,
     spacing: "close",
     armourClass: "heavy",
-    speedClass: "medium",
     startingMorale: 88,
     hasShield: true,
     tacticalIdentity: "Disciplined manoeuvre and sustained frontline fighting",
@@ -110,7 +106,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 100,
     spacing: "close",
     armourClass: "medium",
-    speedClass: "medium",
     startingMorale: 84,
     rangedWeapon: JAVELINS,
     hasShield: true,
@@ -126,7 +121,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 60,
     spacing: "close",
     armourClass: "heavy",
-    speedClass: "medium",
     startingMorale: 96,
     hasShield: true,
     tacticalIdentity: "Small elite reserve with exceptional morale",
@@ -141,7 +135,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 80,
     spacing: "loose",
     armourClass: "light",
-    speedClass: "medium",
     startingMorale: 82,
     rangedWeapon: COMPOSITE_BOW,
     hasShield: false,
@@ -157,7 +150,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 40,
     spacing: "open",
     armourClass: "light",
-    speedClass: "fast",
     startingMorale: 82,
     rangedWeapon: JAVELINS,
     hasShield: true,
@@ -173,7 +165,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 40,
     spacing: "close",
     armourClass: "heavy",
-    speedClass: "fast",
     startingMorale: 88,
     hasShield: true,
     tacticalIdentity: "Decisive charge against disrupted formations",
@@ -188,7 +179,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 30,
     spacing: "open",
     armourClass: "light",
-    speedClass: "very slow",
     startingMorale: 80,
     rangedWeapon: LIGHT_BALLISTAE,
     hasShield: false,
@@ -204,7 +194,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 80,
     spacing: "close",
     armourClass: "medium",
-    speedClass: "medium",
     startingMorale: 86,
     rangedWeapon: PLUMBATAE,
     hasShield: true,
@@ -220,7 +209,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 60,
     spacing: "close",
     armourClass: "heavy",
-    speedClass: "medium",
     startingMorale: 90,
     hasShield: true,
     tacticalIdentity: "Holds the line, denies charges and kills large champions",
@@ -235,7 +223,6 @@ export const ROMAN_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 80,
     spacing: "close",
     armourClass: "medium",
-    speedClass: "medium",
     startingMorale: 94,
     hasShield: true,
     tacticalIdentity: "Resists fear and hostile magic; protects artillery crews",
@@ -253,7 +240,6 @@ export const SUPPORT_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 16,
     spacing: "close",
     armourClass: "medium",
-    speedClass: "slow",
     startingMorale: 88,
     hasShield: true,
     tacticalIdentity: "Rallies nearby Roman formations",
@@ -268,7 +254,6 @@ export const SUPPORT_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 70,
     spacing: "loose",
     armourClass: "medium",
-    speedClass: "slow",
     startingMorale: 78,
     hasShield: true,
     tacticalIdentity: "Loose aggressive infantry warband",
@@ -283,7 +268,6 @@ export const SUPPORT_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 60,
     spacing: "loose",
     armourClass: "light",
-    speedClass: "medium",
     startingMorale: 78,
     rangedWeapon: JAVELINS,
     hasShield: true,
@@ -299,7 +283,6 @@ export const SUPPORT_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 47,
     spacing: "loose",
     armourClass: "light",
-    speedClass: "slow",
     startingMorale: 78,
     rangedWeapon: LEVY_BOW,
     hasShield: false,
@@ -315,7 +298,6 @@ export const SUPPORT_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 16,
     spacing: "loose",
     armourClass: "medium",
-    speedClass: "slow",
     startingMorale: 78,
     hasShield: true,
     tacticalIdentity: "Rallies nearby Saxon formations",
@@ -330,7 +312,6 @@ export const SUPPORT_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 62,
     spacing: "loose",
     armourClass: "light",
-    speedClass: "slow",
     startingMorale: 78,
     hasShield: true,
     tacticalIdentity: "Loose northern infantry warband",
@@ -345,7 +326,6 @@ export const SUPPORT_UNIT_ARCHETYPES: readonly UnitArchetypeProfile[] = [
     defaultStrength: 46,
     spacing: "loose",
     armourClass: "light",
-    speedClass: "medium",
     startingMorale: 78,
     rangedWeapon: JAVELINS,
     hasShield: true,

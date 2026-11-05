@@ -9,19 +9,8 @@ import type {
   FormationMode,
   GameState,
   UnitProfile,
-  UnitType,
 } from "../model/types";
-
-function gridUnitType(archetype: UnitArchetypeProfile): UnitType {
-  if (archetype.type === "archers" || archetype.type === "skirmishers") return "light_infantry";
-  if (archetype.type === "cavalry") {
-    return archetype.unitClass === "heavy cavalry" ? "heavy_cavalry" : "light_cavalry";
-  }
-  if (archetype.type === "infantry") {
-    return archetype.unitClass === "heavy infantry" ? "heavy_infantry" : "medium_infantry";
-  }
-  throw new Error(`${archetype.name} is not a valid custom-map combat unit.`);
-}
+import { gridUnitType } from "./archetypeUnits";
 
 function formationMode(archetype: UnitArchetypeProfile): FormationMode {
   return archetype.spacing === "close" ? "closed" : "open";

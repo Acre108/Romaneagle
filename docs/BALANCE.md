@@ -29,7 +29,7 @@ The grid prototype uses one compact profile per formation: model size, Attack, A
 - `shield_front` grants `+1` Armour only against the front face. Brace grants another `+1` Armour until the formation moves.
 - `brace_against_charge` is equipment, not a permanent spear stat. It adds charge Resistance and counter-damage only while the equipped close-order infantry is actually braced and presents its front.
 
-The unit catalogue now holds only what the grid battle and its cards read: type, class, strength, spacing, armour class, speed class, starting morale, shield, ranged weapon, and a one-line identity. Battle stats are derived from those in the scenario builders.
+The unit catalogue now holds only what the grid battle and its cards read: type, class, strength, spacing, armour class, starting morale, shield, ranged weapon, and a one-line identity. Battle stats are derived from those in the scenario builders.
 
 Not built, and removed from the catalogue until each has a battle rule (the values remain in git history at `0095d02`, `src/units/UnitArchetypes.ts` and `src/units/RangedWeapons.ts`):
 

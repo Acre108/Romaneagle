@@ -301,7 +301,7 @@ export function translateFormation(
   const familyDescription = family.length > 1 ? ` in ${family.length} bodies` : "";
   emitEvent(state, "formation_moved", `${formation.name} ${planned.plan.reordered ? "reordered" : "moved"} ${direction}${familyDescription}.`, {
     blockIds: family.flatMap((candidate) => candidate.blockIds), formationIds: family.map((candidate) => candidate.id),
-    ...(!planned.plan.reordered && family.length === 1 ? { detail: { kind: "step" } as const } : {}),
+    detail: { kind: "step" },
   });
   for (const candidate of family) if (state.formations[candidate.id]) recalculateFormationConnectivity(state, candidate.id);
   return { ok: true };

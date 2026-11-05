@@ -11,8 +11,8 @@ import type {
   GameState,
   GridPosition,
   UnitProfile,
-  UnitType,
 } from "../model/types";
+import { gridUnitType } from "./archetypeUnits";
 import { hitPointsPerModel, modelCapacity } from "../model/unitStats";
 
 interface DeploymentLayout {
@@ -56,17 +56,6 @@ const DEPLOYMENT_LAYOUTS: Readonly<Record<string, DeploymentLayout>> = {
     archers: [line(0, 13, 11)],
   },
 };
-
-function gridUnitType(archetype: UnitArchetypeProfile): UnitType {
-  if (archetype.type === "archers" || archetype.type === "skirmishers" || archetype.type === "artillery") return "light_infantry";
-  if (archetype.type === "cavalry") {
-    return archetype.unitClass === "heavy cavalry" ? "heavy_cavalry" : "light_cavalry";
-  }
-  if (archetype.type === "infantry") {
-    return archetype.unitClass === "heavy infantry" ? "heavy_infantry" : "medium_infantry";
-  }
-  throw new Error(`Campaign unit ${archetype.id} cannot deploy in the grid battle.`);
-}
 
 function unitProfile(archetype: UnitArchetypeProfile, formationMode: FormationMode): UnitProfile {
   const unitType = gridUnitType(archetype);

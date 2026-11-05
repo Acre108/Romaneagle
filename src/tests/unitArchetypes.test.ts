@@ -69,7 +69,8 @@ describe("unit archetype catalog", () => {
     const lanciarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.lanciarii);
     const ballistarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.ballistariiDetachment);
 
-    expect(formatProfileHandling(lanciarii)).toBe("Heavy armour · Medium speed");
+    expect(formatProfileHandling(lanciarii)).toBe("Heavy armour · Movement 2");
+    expect(formatProfileHandling(ballistarii)).toBe("Light armour · Movement 3");
     expect(formatProfileRanged(lanciarii)).toBeNull();
     expect(formatProfileRanged(getUnitArchetype(ROMAN_ARCHETYPE_IDS.sagittarii))).toBe("Composite bows · 12 volleys");
     expect(formatProfileRanged(ballistarii)).toContain("salvos");

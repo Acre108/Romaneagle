@@ -1,3 +1,5 @@
+import { BALANCE } from "../gridBattle/model/config";
+import { gridUnitType } from "../gridBattle/scenario/archetypeUnits";
 import type { UnitArchetypeProfile } from "./UnitArchetypes";
 
 function titleCase(value: string): string {
@@ -9,8 +11,7 @@ export function formatProfileClassification(profile: UnitArchetypeProfile): stri
 }
 
 export function formatProfileHandling(profile: UnitArchetypeProfile): string {
-  return `${titleCase(profile.armourClass)} armour · ` +
-    `${titleCase(profile.speedClass)} speed`;
+  return `${titleCase(profile.armourClass)} armour · Movement ${BALANCE.movement[gridUnitType(profile)]}`;
 }
 
 /** Only weapons that fire in battle belong on a card. Other catalogue equipment has no grid-battle effect yet. */

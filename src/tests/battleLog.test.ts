@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { executeCommand } from "../gridBattle/commands/executeCommand";
 import { resolveCharge } from "../gridBattle/rules/charge";
+import { forceSplit } from "../gridBattle/rules/formationActions";
 import { resolveEngagedOrder } from "../gridBattle/rules/engagement";
 import { battleLogEntries } from "../gridBattle/rules/battleLog";
 import { endFormationActivation } from "../gridBattle/rules/turnSystem";
@@ -91,6 +93,21 @@ describe("the battle log", () => {
     expect(resolveCharge(state, "romans-b1", "saxons-b1")).toBe(true);
 
     expect(state.eventLog.find((event) => event.type === "formation_moved")?.detail).toEqual({ kind: "charge" });
+  });
+
+  it("reports a move in several bodies as movement", () => {
+    const state = blankState(14, 14);
+    addFormation(state, "R-I", [{ x: 2, y: 8 }, { x: 3, y: 8 }, { x: 4, y: 8 }, { x: 5, y: 8 }], "north", "roman");
+    addFormation(state, "great-warband", [{ x: 12, y: 1 }], "south", "saxon");
+    executeCommand(state, { type: "select_cell", position: { x: 2, y: 8 } });
+    expect(forceSplit(state, "R-I")).toBe(true);
+    executeCommand(state, { type: "select_cell", position: { x: 2, y: 8 } });
+    executeCommand(state, { type: "choose_action", action: "move" });
+    expect(executeCommand(state, { type: "move", direction: "north" }).accepted).toBe(true);
+    expect(executeCommand(state, { type: "finish_move", facing: "north" }).accepted).toBe(true);
+
+    const headlines = battleLogEntries(state.eventLog, NAMES).map((entry) => entry.headline);
+    expect(headlines).toContain("I Cohort · Prima moved 1 square.");
   });
 
   it("reads a real order without leaking internal wording", () => {

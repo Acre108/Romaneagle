@@ -1,25 +1,23 @@
+import { requiredElement } from "../../ui/dom";
 import { executeCommand, commandLegality, moveIsCommitted, type GameCommand } from "../commands/executeCommand";
+import { renderBlockPanel, renderCombatPreview, renderFormationPanel, renderLog, renderObjective, renderRangedPreview } from "./battlePanels";
 import { planOrder } from "../commands/planOrder";
 import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import { BALANCE } from "../model/config";
-import type { BattleAction, Direction, FactionId, Formation, GameState, GridPosition, OrderConfirmationPreview, PressurePreview, TroopBlock } from "../model/types";
-import { attackingPressure, chargePreview, defendingResistance, pressurePreview, rearSupport } from "../rules/combat";
-import { pressureCalculationLines } from "../rules/combatPreview";
+import type { BattleAction, Direction, FactionId, Formation, GameState, GridPosition, OrderConfirmationPreview, TroopBlock } from "../model/types";
+import { chargePreview, pressurePreview } from "../rules/combat";
 import { mergeCandidates } from "../rules/formationActions";
 import { moveDirectionFromCell } from "../rules/movement";
-import { connectedComponents, provisionalFormationFamily } from "../rules/splitting";
-import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
+import { formationIsEngaged } from "../rules/engagement";
 import { formationFamilyIsRouted } from "../rules/routing";
 import { remainingActivations } from "../rules/turnSystem";
-import { effectiveBlockFacing } from "../rules/blockFacing";
 import { createPrototypeGridScenario } from "../scenario/prototypeScenario";
 import type { GridBattleScenarioFactory } from "../scenario/campaignScenario";
 import { BattlefieldRenderer } from "../rendering/BattlefieldRenderer";
 import type { AnimationSpeed } from "../rendering/AnimationQueue";
-import { blockHitPoints, hasEquipment, isCavalry } from "../model/unitStats";
-import { rangedAttackPreview, type RangedAttackPreview } from "../rules/rangedCombat";
-import { getRangedWeaponProfile } from "../../units/RangedWeapons";
+import { isCavalry } from "../model/unitStats";
+import { rangedAttackPreview } from "../rules/rangedCombat";
 import { planAiActivation, type AiActivationPlan } from "../ai/formationAi";
 import type { MissionObjectiveDefinition, ObjectiveOutcome } from "../rules/campaignObjectives";
 import {
@@ -36,24 +34,6 @@ export interface GridBattleConclusion {
 }
 
 type UiAction = BattleAction | "end";
-
-function requiredElement<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing grid battle element #${id}`);
-  return element as T;
-}
-
-function definitionRows(values: readonly [string, string | number][]): HTMLElement[] {
-  return values.map(([label, value]) => {
-    const row = document.createElement("div");
-    const term = document.createElement("dt");
-    const detail = document.createElement("dd");
-    term.textContent = label;
-    detail.textContent = String(value);
-    row.append(term, detail);
-    return row;
-  });
-}
 
 export class GridBattleController {
   private state: GameState;
@@ -315,12 +295,12 @@ export class GridBattleController {
     const enemy = blocksAt(this.state, position).find((block) => block.factionId !== formation.factionId);
     if (!enemy) return;
     if (this.state.currentAction === "shoot") {
-      this.renderRangedPreview(rangedAttackPreview(this.state, formation.id, enemy.id));
+      renderRangedPreview(rangedAttackPreview(this.state, formation.id, enemy.id));
       return;
     }
     const attacker = this.attackSourceFor(enemy.id, this.state.currentAction === "charge");
     if (!attacker) return;
-    if (this.state.currentAction === "attack") this.renderCombatPreview(pressurePreview(this.state, attacker.id, enemy.id));
+    if (this.state.currentAction === "attack") renderCombatPreview(pressurePreview(this.state, attacker.id, enemy.id));
     else {
       const charge = chargePreview(this.state, attacker.id, enemy.id);
       requiredElement("grid-combat-preview").textContent = charge
@@ -329,92 +309,6 @@ export class GridBattleController {
           : `Infantry charge ${charge.distance} ${charge.distance === 1 ? "square" : "squares"} · ${charge.bonusNullified ? "attack bonus nullified by braced front" : `+${charge.attackBonus} attack pressure`}.`
         : "That target is not in a legal charge lane.";
     }
-  }
-
-  private renderCombatPreview(preview: PressurePreview | null): void {
-    const panel = requiredElement("grid-combat-preview");
-    if (!preview) {
-      panel.textContent = "Choose Attack, then hover or click a highlighted enemy block.";
-      return;
-    }
-    panel.replaceChildren();
-    const lines = [
-      `Pressure ${preview.attackingPressure} vs resistance ${preview.defendingResistance}`,
-      `Damage range ${preview.minimumDamage}–${preview.maximumDamage} · ${preview.defence}% evade from defence`,
-      `On a hit: attack ${preview.rawDamage} vs ${preview.armour + preview.shieldArmour + preview.braceArmour} protection${preview.damagePenalty > 0 ? ` and ${preview.damagePenalty} order penalty` : ""}`,
-      `Seeded result this round: ${preview.expectedDamage} damage · ${preview.expectedCasualties} ${preview.expectedCasualties === 1 ? "model" : "models"} lost`,
-      `Net ${preview.netPressure}: ${preview.expectedResult}`,
-      preview.retreatHazard
-        ? preview.retreatHazard === "river_deep"
-          ? "Retreat enters deep water: affected blocks drown"
-          : "Retreat crosses a cliff of more than one level: affected blocks are destroyed"
-        : preview.netPressure < 2
-        ? "No retreat predicted"
-        : preview.retreatMode === "chaotic"
-        ? `Chaotic retreat: ${preview.retreatDestinations.map((position) => `${String.fromCharCode(65 + position.x)}${position.y + 1}`).join(", ")}`
-        : `Good-order retreat: ${String.fromCharCode(65 + preview.retreatDestination.x)}${preview.retreatDestination.y + 1}`,
-      preview.cascadeLength > 0 ? `Cascade may displace ${preview.cascadeLength} block(s)` : "No friendly retreat cascade predicted",
-      preview.mayCompress ? "Retreat is blocked: compression and contested melee possible" : "Retreat space is available",
-      ...preview.characterModifiers,
-    ];
-    for (const line of lines) {
-      const row = document.createElement("div");
-      row.textContent = line;
-      panel.append(row);
-    }
-    const calculationLines = pressureCalculationLines(preview);
-    const addMathButton = (label: string, details: readonly string[]): void => {
-      const button = document.createElement("button");
-      const detail = document.createElement("div");
-      button.type = "button";
-      button.className = "grid-preview-math-button";
-      button.textContent = label;
-      button.setAttribute("aria-expanded", "false");
-      detail.className = "grid-preview-math-detail";
-      detail.hidden = true;
-      detail.textContent = details.join("\n");
-      button.addEventListener("click", () => {
-        detail.hidden = !detail.hidden;
-        button.setAttribute("aria-expanded", String(!detail.hidden));
-        button.textContent = detail.hidden ? label : "Hide math";
-      });
-      panel.append(button, detail);
-    };
-    addMathButton("Damage math", calculationLines.slice(3));
-    addMathButton("Position math", calculationLines.slice(0, 3));
-  }
-
-  private renderRangedPreview(preview: RangedAttackPreview | null): void {
-    const panel = requiredElement("grid-combat-preview");
-    if (!preview) {
-      panel.textContent = "Choose Shoot, then hover or click a highlighted enemy block.";
-      return;
-    }
-    panel.replaceChildren();
-    const distanceLabel = preview.distance === preview.farthestDistance
-      ? String(preview.distance)
-      : `${preview.distance}–${preview.farthestDistance}`;
-    const lines = [
-      `${preview.weaponLabel} · firing distance ${distanceLabel} squares (range ${preview.minimumRange}–${preview.maximumRange})`,
-      `${preview.firingBlockCount}/${preview.totalBlockCount} blocks firing → ${preview.impactCount} target blocks hit`,
-      `${preview.firingModelCount} participating models · ${preview.minimumDamage}–${preview.maximumDamage} damage range`,
-      `${preview.ammunition} ammunition remaining · the volley spends 1`,
-      `${preview.damage} deterministic damage · ${preview.casualties} ${preview.casualties === 1 ? "model" : "models"} lost`,
-      `Target edge: ${preview.targetEdge} · shields block ${preview.shieldedImpactCount}/${preview.impactCount} lanes · armour ×${preview.armourMultiplier.toFixed(2)}`,
-    ];
-    for (const line of lines) {
-      const row = document.createElement("div");
-      row.textContent = line;
-      panel.append(row);
-    }
-    const detail = document.createElement("details");
-    const summary = document.createElement("summary");
-    const math = document.createElement("div");
-    summary.textContent = "Volley math";
-    math.className = "grid-preview-math-detail";
-    math.textContent = preview.math.join("\n");
-    detail.append(summary, math);
-    panel.append(detail);
   }
 
   private chooseAction(action: UiAction): void {
@@ -459,7 +353,7 @@ export class GridBattleController {
       press: "Gain +2 pressure but inflict 1 fewer casualty per attack; steady files advance into space the enemy gives up.",
     };
     requiredElement("grid-action-help").textContent = help[action];
-    if (action === "shoot") this.renderRangedPreview(null);
+    if (action === "shoot") renderRangedPreview(null);
   }
 
   private toggleDebug(): void {
@@ -578,83 +472,6 @@ export class GridBattleController {
     this.renderAll();
   }
 
-  private renderFormationPanel(): void {
-    const formation = this.selectedFormation();
-    const name = requiredElement("grid-formation-name");
-    const stats = requiredElement("grid-formation-stats");
-    if (!formation) {
-      name.textContent = "No formation selected";
-      stats.replaceChildren();
-      return;
-    }
-    const blocks = formation.blockIds.map((id) => this.state.blocks[id]).filter((block) => block !== undefined);
-    const characters = blocks.map((block) => block.characterId ? this.state.characters[block.characterId]?.name : null).filter(Boolean);
-    const family = provisionalFormationFamily(this.state, formation.id);
-    const hasStragglers = family.some((candidate) => candidate.blockIds.length <= BALANCE.stragglerBlockThreshold);
-    const breakup = formation.provisionalFamilyId
-      ? `${family.length} bodies — shared activation · ${hasStragglers ? "stragglers attached" : `regroup ${formation.failedRegroupActivations ?? 0}/${BALANCE.fragmentRegroupGraceActivations}`}`
-      : formation.status === "fragment" ? "Independent fragment" : "Unified";
-    const moraleState = formation.cohesion <= 0 ? "Routed"
-      : formation.cohesion <= BALANCE.breakingMoraleThreshold ? "Breaking"
-        : formation.cohesion < 7 ? "Shaken" : "Steady";
-    const rangedWeapon = formation.unit.rangedWeaponId
-      ? getRangedWeaponProfile(formation.unit.rangedWeaponId)
-      : null;
-    name.textContent = formation.name;
-    stats.replaceChildren(...definitionRows([
-      ["Faction", this.factionLabel(formation.factionId)],
-      ["Status", formation.status],
-      ["Engagement", formationIsEngaged(this.state, formation.id) ? "Engaged" : "Free"],
-      ["Breakup", breakup],
-      ["Facing", formation.facing],
-      ["Formation", formation.formationMode],
-      ["Unit type", formation.unit.unitType.replaceAll("_", " ")],
-      ["Blocks", blocks.length],
-      ["Models", blocks.reduce((sum, block) => sum + block.models, 0)],
-      ["Model size", formation.unit.modelSize],
-      ["Attack", formation.unit.attack],
-      ["Ranged weapon", rangedWeapon?.label ?? "None"],
-      ["Ammunition", rangedWeapon ? `${formation.ammunition ?? 0} ${rangedWeapon.ammunitionLabel}` : "—"],
-      ["Armour", formation.unit.armour],
-      ["Defence", `${formation.unit.defence}%`],
-      ["HP per model", formation.unit.hitPointsPerModel],
-      ["Morale", `${formation.cohesion}/${formation.maxCohesion}`],
-      ["Morale state", moraleState],
-      ["Movement", formation.movementRemaining],
-      ["Stance", formation.isBraced ? "Braced (+1 armour)" : "Mobile"],
-      ["Characters", characters.join(", ") || "None"],
-      ["Connectivity", connectedComponents(this.state, formation.id).length === 1 ? "Intact" : "Broken"],
-    ]));
-  }
-
-  private renderBlockPanel(): void {
-    const block = this.selectedBlock();
-    const name = requiredElement("grid-block-name");
-    const stats = requiredElement("grid-block-stats");
-    if (!block) {
-      name.textContent = "Click a selected formation block again";
-      stats.replaceChildren();
-      return;
-    }
-    const character = block.characterId ? this.state.characters[block.characterId] : undefined;
-    const formation = block.formationId ? this.state.formations[block.formationId] : undefined;
-    name.textContent = block.id;
-    stats.replaceChildren(...definitionRows([
-      ["Models", `${block.models}/${block.modelCapacity}`],
-      ["Hit points", formation ? blockHitPoints(formation, block) : 0],
-      ["Disorder", block.disorder],
-      ["Facing", effectiveBlockFacing(this.state, block.id)],
-      ["Morale", blockIsWavering(this.state, block.id) ? "Wavering" : "Steady"],
-      ["Pressure", attackingPressure(this.state, block.id)],
-      ["Resistance", defendingResistance(this.state, block.id, effectiveBlockFacing(this.state, block.id))],
-      ["Shield", formation && hasEquipment(formation, "shield_front") ? "+1 frontal armour" : "None"],
-      ["Equipment", formation?.unit.equipment.join(", ").replaceAll("_", " ") || "None"],
-      ["Rear support", rearSupport(this.state, block.id)],
-      ["Host character", character ? `${character.name} (${character.role})` : "None"],
-      ["Contested", block.isContested ? "Yes" : "No"],
-    ]));
-  }
-
   private renderActions(): void {
     const formation = this.selectedFormation();
     const engaged = formation ? formationIsEngaged(this.state, formation.id) : false;
@@ -666,7 +483,7 @@ export class GridBattleController {
         : commandLegality(this.state, action);
       const accepted = legality.accepted;
       button.disabled = !accepted || Boolean(this.pendingOrder) || this.isComputerTurn();
-      if (!accepted && legality.reason) button.title = legality.reason;
+      button.title = accepted ? "" : legality.reason ?? "";
       button.classList.toggle("active", this.state.currentAction === action);
     });
     const facingPanel = requiredElement("grid-move-facing");
@@ -684,53 +501,16 @@ export class GridBattleController {
     }
   }
 
-  private renderLog(): void {
-    const log = requiredElement<HTMLOListElement>("grid-combat-log");
-    const rows = this.state.eventLog.slice(-12).reverse().map((event) => {
-      const item = document.createElement("li");
-      item.textContent = event.message;
-      return item;
-    });
-    if (rows.length === 0) {
-      const item = document.createElement("li");
-      item.textContent = "Round 1: Romans choose the first formation.";
-      rows.push(item);
-    }
-    log.replaceChildren(...rows);
-  }
-
-  private renderObjective(): void {
-    const status = requiredElement("grid-objective-status");
-    const progress = requiredElement<HTMLUListElement>("grid-objective-progress");
-    if (!this.objectiveDefinition) {
-      status.textContent = "Break the opposing force.";
-      progress.replaceChildren();
-      return;
-    }
-    const evaluation = this.objectiveDefinition.evaluate(this.state);
-    status.textContent = evaluation.status;
-    progress.replaceChildren(...evaluation.progress.map((entry) => {
-      const item = document.createElement("li");
-      item.className = entry.state;
-      const label = document.createElement("span");
-      label.textContent = entry.label;
-      const value = document.createElement("strong");
-      value.textContent = entry.value;
-      item.append(label, value);
-      return item;
-    }));
-  }
-
   private renderUi(): void {
     requiredElement("grid-round").textContent = String(this.state.round);
     requiredElement("grid-active-faction").textContent = `${this.factionLabel(this.state.activeFactionId)}${this.isComputerTurn() ? " · Computer" : ""}`;
     requiredElement("grid-remaining").textContent = String(remainingActivations(this.state));
-    this.renderFormationPanel();
-    this.renderBlockPanel();
+    renderFormationPanel(this.state, (factionId) => this.factionLabel(factionId));
+    renderBlockPanel(this.state);
     this.renderActions();
-    this.renderLog();
-    this.renderObjective();
-    if (this.state.currentAction !== "attack" && this.state.currentAction !== "shoot") this.renderCombatPreview(null);
+    renderLog(this.state);
+    renderObjective(this.state, this.objectiveDefinition);
+    if (this.state.currentAction !== "attack" && this.state.currentAction !== "shoot") renderCombatPreview(null);
   }
 
   private renderAll(): void {

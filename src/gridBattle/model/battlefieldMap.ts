@@ -886,15 +886,6 @@ export function addMapTrigger(map: BattlefieldMap, trigger: MapTriggerDefinition
   recordMapChange(map, positions.length > 0 ? positions : [{ x: 0, y: 0 }]);
 }
 
-export function removeMapTrigger(map: BattlefieldMap, triggerId: string): boolean {
-  const existing = map.triggers.find((trigger) => trigger.id === triggerId);
-  if (!existing) return false;
-  map.triggers = map.triggers.filter((trigger) => trigger.id !== triggerId);
-  const positions = triggerPositions(existing).filter((position) => mapInBounds(map, position));
-  recordMapChange(map, positions.length > 0 ? positions : [{ x: 0, y: 0 }]);
-  return true;
-}
-
 export function setMapElevation(map: BattlefieldMap, position: GridPosition, elevation: number): void {
   assertMapElevation(elevation, "Elevation");
   if (map.buildingCells[positionKey(position)]) throw new Error("Remove the building before changing its elevation.");

@@ -25,6 +25,16 @@ export function isSafeProjectMapFileName(fileName: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.json$/.test(fileName);
 }
 
+/** Stops other websites writing maps while the dev server runs. Non-browser clients send no Origin. */
+export function isSameOriginRequest(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 function displayName(fileName: string): string {
   return fileName
     .slice(0, -extname(fileName).length)
@@ -124,6 +134,10 @@ export function localMapStoragePlugin(mapsDirectory: string): Plugin {
             return;
           }
           if (request.method === "POST") {
+            if (!isSameOriginRequest(request.headers.origin, request.headers.host)) {
+              sendJson(response, 403, { error: "Cross-origin map writes are not allowed." });
+              return;
+            }
             const map = parseBattlefieldMap(await readRequestJson(request));
             await mkdir(mapsDirectory, { recursive: true });
             await writeFile(path, `${JSON.stringify(serializeBattlefieldMap(map), null, 2)}\n`, "utf8");

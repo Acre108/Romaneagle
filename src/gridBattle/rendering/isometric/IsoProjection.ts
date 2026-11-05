@@ -134,11 +134,6 @@ export function pointInsideIsoSurface(
   return true;
 }
 
-export function isCornerRampDirection(direction: SurfaceRampDirection): direction is CornerRampDirection {
-  return direction === "northEast" || direction === "southEast"
-    || direction === "southWest" || direction === "northWest";
-}
-
 export function interpolateGridPosition(
   start: GridPosition,
   end: GridPosition,

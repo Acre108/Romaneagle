@@ -1,4 +1,4 @@
-import { emitEvent } from "../events/events";
+import { emitEvent, eventsSince } from "../events/events";
 import { blocksAt, inBounds, positionKey } from "../model/occupancy";
 import { terrainBlockCapacityAt } from "../model/terrain";
 import type { MapTriggerDefinition, MapTriggerEffect, TriggerSpawnFormation } from "../model/triggerDefinitions";
@@ -245,7 +245,7 @@ export function evaluateMapTriggers(state: GameState, sourceEvents: readonly Gam
       const firstEffectEventId = state.nextEventId;
       emitEvent(state, "trigger_fired", `${trigger.label} triggered.`, { triggerId: trigger.id });
       for (const effect of trigger.effects) executeEffect(state, trigger.id, effect);
-      availableEvents.push(...state.eventLog.filter((event) => event.id >= firstEffectEventId));
+      availableEvents.push(...eventsSince(state.eventLog, firstEffectEventId));
     }
     if (!firedInPass) break;
   }

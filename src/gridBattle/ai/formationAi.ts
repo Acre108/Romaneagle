@@ -9,6 +9,7 @@ import { CARDINAL_DIRECTIONS, manhattanDistance } from "../rules/direction";
 import { engagedContacts, formationIsEngaged } from "../rules/engagement";
 import { provisionalFormationFamily } from "../rules/splitting";
 import { rangedAttackPreview } from "../rules/rangedCombat";
+import { formationFamilyIsRouted } from "../rules/routing";
 import { canSelectFormation } from "../rules/turnSystem";
 
 export interface AiCommandStep {
@@ -241,8 +242,10 @@ function planAdvanceActivation(state: GameState, formation: Formation, steps: Ai
   for (const direction of movement.directions) steps.push({ command: { type: "move", direction }, confirmed: true });
   const movedFormation = movement.state.formations[formation.id];
   if (!movedFormation) return null;
-  const facing = facingTowardNearestEnemy(movement.state, movedFormation);
-  steps.push({ command: { type: "finish_move", facing }, confirmed: false });
+  // The move itself can break the formation, and a routed formation cannot choose a final facing.
+  steps.push(formationFamilyIsRouted(movement.state, movedFormation.id)
+    ? { command: { type: "end_activation" }, confirmed: false }
+    : { command: { type: "finish_move", facing: facingTowardNearestEnemy(movement.state, movedFormation) }, confirmed: false });
   const improvement = Number.isFinite(initialDistance) ? initialDistance - movement.distance : 0;
   return {
     factionId: formation.factionId,
@@ -269,6 +272,20 @@ function planStationaryActivation(state: GameState, formation: Formation, steps:
   };
 }
 
+/** Last resort: a formation with no usable order passes, so the battle can never wait on the AI forever. */
+function planPassActivation(state: GameState, formation: Formation, steps: AiCommandStep[]): FormationPlan | null {
+  if (!appendPlannedOrder(state, steps, { type: "end_activation" })) return null;
+  return {
+    factionId: formation.factionId,
+    formationId: formation.id,
+    formationName: formation.name,
+    intent: "hold",
+    summary: `${formation.name} has no usable order and stands fast.`,
+    steps,
+    priority: 0,
+  };
+}
+
 function planFormationActivation(original: GameState, formationId: string): FormationPlan | null {
   const state = structuredClone(original);
   const formation = state.formations[formationId];
@@ -278,13 +295,16 @@ function planFormationActivation(original: GameState, formationId: string): Form
   if (!select) return null;
   steps.push(select);
 
-  if (formationIsEngaged(state, formation.id)) return planEngagedActivation(state, formation, steps);
+  if (formationIsEngaged(state, formation.id)) {
+    return planEngagedActivation(state, formation, steps) ?? planPassActivation(state, formation, steps);
+  }
   const charge = planChargeActivation(structuredClone(state), structuredClone(formation), [...steps]);
   if (charge) return charge;
   const ranged = planRangedActivation(structuredClone(state), structuredClone(formation), [...steps]);
   if (ranged) return ranged;
   return planAdvanceActivation(structuredClone(state), structuredClone(formation), [...steps])
-    ?? planStationaryActivation(state, formation, steps);
+    ?? planStationaryActivation(state, formation, steps)
+    ?? planPassActivation(state, formation, steps);
 }
 
 function eligibleFormationIds(state: GameState, factionId: FactionId): string[] {

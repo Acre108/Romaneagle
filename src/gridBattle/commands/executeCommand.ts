@@ -1,6 +1,7 @@
+import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import type { BattleAction, Direction, GameState, GridPosition } from "../model/types";
-import { chargePreview, createContestedCell, damageBlock, pressurePreview, resolveCharge, resolveContestedMelees, resolveDuels, resolvePressure, retreatBlock } from "../rules/combat";
+import { chargePreview, clearOrphanedContestedFlags, createContestedCell, damageBlock, pressurePreview, resolveCharge, resolveContestedMelees, resolveDuels, resolvePressure, retreatBlock } from "../rules/combat";
 import { forceSplit, legalReformDestinations, mergeCandidates, mergeFormations, reformBlock, transferCharacter } from "../rules/formationActions";
 import { canTranslateFormation, finishFormationMove, translateFormation } from "../rules/movement";
 import { canFallBack, engagedContacts, fallBackFormation, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";
@@ -77,7 +78,10 @@ export function executeCommand(
 ): CommandResult {
   const firstNewEventId = state.nextEventId;
   const result = executeCommandCore(state, command, options);
-  if (result.accepted) evaluateMapTriggers(state, state.eventLog.filter((event) => event.id >= firstNewEventId));
+  if (result.accepted) {
+    clearOrphanedContestedFlags(state);
+    evaluateMapTriggers(state, eventsSince(state.eventLog, firstNewEventId));
+  }
   return result;
 }
 

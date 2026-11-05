@@ -628,6 +628,18 @@ function clearOrphanedContestedCell(state: GameState, position: GridPosition): s
   return [...affectedFormationIds];
 }
 
+/** A partner can leave a contested cell without dying there (forced retreat, routing dispersal). */
+export function clearOrphanedContestedFlags(state: GameState): void {
+  const affectedFormationIds = new Set<string>();
+  for (const block of Object.values(state.blocks)) {
+    if (!block.isContested) continue;
+    for (const formationId of clearOrphanedContestedCell(state, block.position)) affectedFormationIds.add(formationId);
+  }
+  for (const formationId of affectedFormationIds) {
+    if (state.formations[formationId]) recalculateFormationConnectivity(state, formationId);
+  }
+}
+
 export function damageBlock(state: GameState, blockId: string, amount: number, reason: string): boolean {
   const block = state.blocks[blockId];
   if (!block) return true;

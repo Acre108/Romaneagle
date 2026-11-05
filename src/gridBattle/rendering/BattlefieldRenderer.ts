@@ -2217,6 +2217,9 @@ export class BattlefieldRenderer {
     this.app.ticker.remove(this.updateActivationPulse, this);
     this.animationQueue?.destroy();
     this.animationQueue = null;
+    // Destroying the app loses this canvas's WebGL context for good, and Pixi hangs if it
+    // initialises on a lost context. The next battle needs a new canvas in the same place.
+    this.canvas.replaceWith(this.canvas.cloneNode(false));
     this.app.destroy({ removeView: false, releaseGlobalResources: true }, { children: true });
   }
 }

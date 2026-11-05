@@ -11,3 +11,8 @@ export function emitEvent(
   if (state.eventLog.length > 120) state.eventLog.splice(0, state.eventLog.length - 120);
   return event;
 }
+
+/** Events are matched by id because the capped log's length stops growing once it is full. */
+export function eventsSince(eventLog: readonly GameEvent[], firstEventId: number): GameEvent[] {
+  return eventLog.filter((event) => event.id >= firstEventId);
+}

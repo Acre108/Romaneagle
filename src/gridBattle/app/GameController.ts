@@ -1,5 +1,6 @@
 import { executeCommand, commandLegality, type GameCommand } from "../commands/executeCommand";
 import { planOrder } from "../commands/planOrder";
+import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import { BALANCE } from "../model/config";
 import type { BattleAction, Direction, FactionId, Formation, GameState, GridPosition, OrderConfirmationPreview, PressurePreview, TroopBlock } from "../model/types";
@@ -118,7 +119,7 @@ export class GridBattleController {
   }
 
   private dispatch(command: GameCommand, confirmed = false): boolean {
-    const previousEventCount = this.state.eventLog.length;
+    const firstNewEventId = this.state.nextEventId;
     const result = executeCommand(this.state, command, { confirmed });
     if (!result.accepted) {
       requiredElement("grid-action-help").textContent = result.reason ?? "That command is not legal.";
@@ -126,7 +127,7 @@ export class GridBattleController {
     }
     this.pendingOrder = null;
     if (confirmed) requiredElement("grid-action-help").textContent = "Order confirmed and resolved.";
-    this.renderer.enqueueEvents(this.state.eventLog.slice(previousEventCount));
+    this.renderer.enqueueEvents(eventsSince(this.state.eventLog, firstNewEventId));
     this.renderAll();
     this.checkAutomaticConclusion();
     this.scheduleComputerTurn();
@@ -184,13 +185,21 @@ export class GridBattleController {
     }
     if (!this.dispatch(step.command, step.confirmed)) {
       this.computerBusy = false;
-      requiredElement("grid-action-help").textContent = `${plan.formationName}'s computer order became illegal.`;
+      this.abandonComputerOrder(plan);
       return;
     }
     this.computerTimer = window.setTimeout(() => {
       this.computerTimer = null;
       this.executeComputerStep(plan, stepIndex + 1);
     }, this.computerStepDelay(plan, stepIndex));
+  }
+
+  /** A rejected AI order must not stop the battle: end that activation and let the turn move on. */
+  private abandonComputerOrder(plan: AiActivationPlan): void {
+    this.state.currentAction = null;
+    if (!this.dispatch({ type: "end_activation" })) {
+      requiredElement("grid-action-help").textContent = `${plan.formationName} could not finish its order.`;
+    }
   }
 
   private planAndDispatch(command: GameCommand): boolean {
@@ -487,7 +496,7 @@ export class GridBattleController {
     }, options);
     requiredElement("grid-move-facing").addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-grid-facing]");
-      if (button) this.planAndDispatch({ type: "finish_move", facing: button.dataset.gridFacing as Direction });
+      if (button && !this.isComputerTurn()) this.planAndDispatch({ type: "finish_move", facing: button.dataset.gridFacing as Direction });
     }, options);
     requiredElement("grid-order-confirm-accept").addEventListener("click", () => this.confirmPendingOrder(), options);
     requiredElement("grid-order-confirm-cancel").addEventListener("click", () => this.cancelPendingOrder(), options);
@@ -548,6 +557,7 @@ export class GridBattleController {
       this.cancelPendingOrder();
       return;
     }
+    if (this.isComputerTurn()) return;
     this.state.currentAction = null;
     this.state.phase = this.state.selectedFormationId ? "choosing_action" : "selecting";
     requiredElement("grid-action-help").textContent = "Action cancelled.";
@@ -646,7 +656,7 @@ export class GridBattleController {
       button.classList.toggle("active", this.state.currentAction === action);
     });
     const facingPanel = requiredElement("grid-move-facing");
-    const choosingMoveFacing = Boolean(formation && this.state.currentAction === "move");
+    const choosingMoveFacing = Boolean(formation && this.state.currentAction === "move") && !this.isComputerTurn();
     facingPanel.hidden = !choosingMoveFacing || Boolean(this.pendingOrder);
     facingPanel.querySelectorAll<HTMLButtonElement>("[data-grid-facing]").forEach((button) => {
       button.disabled = !choosingMoveFacing || formationFamilyIsRouted(this.state, formation!.id);

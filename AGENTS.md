@@ -1,8 +1,8 @@
 # Project purpose
 
-This repository contains an experimental real-time formation tactics game set in Britain around AD 400.
+This repository contains a turn-based grid formation tactics game set in Britain around AD 400, called The Last Eagle. Players and the computer alternate activating formations, and a short Roman campaign links the battles.
 
-The project is a gameplay prototype, not a production game. Its current purpose is to test whether commanding dense formations of tiny flat soldiers is legible and satisfying.
+The project is a gameplay prototype, not a production game. Its current purpose is to test whether commanding dense formations of tiny soldiers is legible and satisfying.
 
 ## Working priorities
 
@@ -20,17 +20,18 @@ Do not prioritise visual ornament over readable gameplay.
 
 ## Simulation rules
 
-- Units are the primary simulation entities.
-- Individual soldiers are subordinate visual occupants of formation slots.
+- Formations and their blocks are the primary simulation entities.
+- Individual soldiers are subordinate visual occupants of blocks.
 - Do not introduce independent soldier pathfinding or tactical AI.
 - Prefer unit-level calculations over soldier-level calculations.
 - Gameplay systems should remain deterministic where practical.
 - Keep combat abstract until the formation game is proven.
+- All battle state changes go through `executeCommand`. `planOrder` and AI planning must not mutate the state they are given.
 
 ## Technical constraints
 
 - TypeScript strict mode must remain enabled.
-- Use Canvas 2D for battlefield rendering.
+- Use PixiJS for battlefield rendering, and import it only from `src/gridBattle/rendering/`.
 - UI may use ordinary HTML and CSS.
 - Do not add production dependencies without explaining why.
 - Avoid allocations in hot update and render loops.
@@ -39,7 +40,9 @@ Do not prioritise visual ornament over readable gameplay.
 
 ## Scope rules
 
-Do not add campaign, character, inventory, multiplayer, backend or save-game systems unless explicitly requested.
+The game already has a campaign, characters, a browser-local campaign save and a local map editor. Extend them only when explicitly requested.
+
+Do not add inventory, multiplayer, backend or cloud-save systems unless explicitly requested.
 
 When asked for a feature that expands scope:
 
@@ -54,6 +57,7 @@ Before completing a task, run:
 - npm run typecheck
 - npm run test
 - npm run build
+- npm run test:smoke, when the change affects visible or interactive behaviour
 
 Also manually launch the game when the change affects visible or interactive behaviour.
 

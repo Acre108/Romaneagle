@@ -1,4 +1,6 @@
+import { TEST_SCENARIO_MISSION_ID, TEST_UNIT_OPTIONS } from "../../scenario/TestScenario";
 import type { GameState } from "../model/types";
+import { applyTestRomanDeployment } from "./campaignRomanDeployment";
 import { createBlackwaterFordScenario } from "./blackwaterFordScenario";
 import { createHadriansWallScenario } from "./hadriansWallScenario";
 import { createPrototypeGridScenario } from "./prototypeScenario";
@@ -18,6 +20,16 @@ export function scenarioFactoryForMission(
   }
   if (missionId === "roman-3-raven-at-vindolanda") {
     return () => createVindolandaScenario(selectedRomanFormationIds);
+  }
+  const selected = missionId === TEST_SCENARIO_MISSION_ID
+    ? TEST_UNIT_OPTIONS.filter((option) => selectedRomanFormationIds.includes(option.id))
+    : [];
+  if (selected.length > 0) {
+    return () => {
+      const state = createPrototypeGridScenario();
+      applyTestRomanDeployment(state, selected);
+      return state;
+    };
   }
   return createPrototypeGridScenario;
 }

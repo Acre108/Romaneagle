@@ -199,14 +199,12 @@ function renderTestScenario(): void {
     ...TEST_UNIT_OPTIONS.map(createTestUnitCard),
   );
   const opposition = TEST_SAXON_SPECS
-    .filter((spec) => spec.archetypeId !== "saxon-standard")
     .map((spec) => {
-      const profile = getUnitArchetype(spec.archetypeId);
       const row = document.createElement("div");
       const name = document.createElement("span");
       name.textContent = spec.name;
       const role = document.createElement("small");
-      role.textContent = profile.unitClass;
+      role.textContent = spec.role;
       row.append(name, role);
       return row;
     });
@@ -494,7 +492,7 @@ function resultRow(formation: BattleFormationResult): HTMLElement {
   return row;
 }
 
-function handleBattleEnded(report: BattleReport): void {
+function handleBattleEnded(report: BattleReport, persistProgress = true): void {
   if (!activeMission) return;
   if (testScenarioActive) {
     lastBattleReport = report;
@@ -511,9 +509,11 @@ function handleBattleEnded(report: BattleReport): void {
     returnButton.hidden = false;
     return;
   }
-  campaignProgress = completeMission(campaignProgress, activeMission.id);
-  saveCampaignProgress(window.localStorage, campaignProgress);
-  renderCampaignSelection();
+  if (persistProgress) {
+    campaignProgress = completeMission(campaignProgress, activeMission.id);
+    saveCampaignProgress(window.localStorage, campaignProgress);
+    renderCampaignSelection();
+  }
   lastBattleReport = report;
   const battle = requiredElement("battle-screen");
   const results = requiredElement("formation-results");
@@ -735,7 +735,7 @@ function previewVictoryFlow(): void {
       maximumSoldiers: formation.count,
       state: index === 1 ? "shaken" as const : "steady" as const,
     })),
-  });
+  }, false);
 }
 
 function showMapEditor(map?: Awaited<ReturnType<typeof loadProjectMap>>, name?: string): void {
@@ -932,7 +932,7 @@ function bindEvents(): void {
 
 renderCampaignSelection();
 bindEvents();
-if (new URLSearchParams(window.location.search).has("debrief")) previewVictoryFlow();
+if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("debrief")) previewVictoryFlow();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

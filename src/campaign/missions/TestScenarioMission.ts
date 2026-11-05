@@ -1,11 +1,12 @@
 import type { MissionDefinition } from "../CampaignTypes";
 import {
   DEFAULT_TEST_UNIT_IDS,
+  TEST_SCENARIO_MISSION_ID,
   TEST_UNIT_OPTIONS,
 } from "../../scenario/TestScenario";
 
 export const TEST_SCENARIO_MISSION: MissionDefinition = {
-  id: "test-field-trials",
+  id: TEST_SCENARIO_MISSION_ID,
   campaignId: "test",
   sequence: 0,
   numeral: "T",
@@ -18,7 +19,7 @@ export const TEST_SCENARIO_MISSION: MissionDefinition = {
   objectiveDetail: "Use the sandbox to compare formations, equipment, weapons, and specialist interactions.",
   facts: [
     { label: "Terrain", value: "Open ground · Woods" },
-    { label: "Opposition", value: "6 Saxon formations · 1 standard" },
+    { label: "Opposition", value: "3 Saxon formations" },
     { label: "Progress", value: "Campaign save unaffected" },
   ],
   scoutReport: "Choose a force, deploy, and repeat the engagement as often as needed.",

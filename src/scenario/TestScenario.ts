@@ -1,9 +1,10 @@
 import {
   ROMAN_ARCHETYPE_IDS,
   ROMAN_UNIT_ARCHETYPES,
-  SUPPORT_ARCHETYPE_IDS,
   type UnitArchetypeId,
 } from "../units/UnitArchetypes";
+
+export const TEST_SCENARIO_MISSION_ID = "test-field-trials";
 
 export interface TestUnitOption {
   id: string;
@@ -14,8 +15,8 @@ export interface TestUnitOption {
 
 export interface TestOppositionOption {
   id: string;
-  archetypeId: UnitArchetypeId;
   name: string;
+  role: string;
 }
 
 export const TEST_UNIT_OPTIONS: readonly TestUnitOption[] =
@@ -39,33 +40,9 @@ export const DEFAULT_TEST_UNIT_IDS: readonly string[] = TEST_UNIT_OPTIONS
   .filter((option) => DEFAULT_TEST_ARCHETYPE_IDS.has(option.archetypeId))
   .map((option) => option.id);
 
+/** Mirrors the Saxon formations in the prototype scenario, which the sandbox battle uses. */
 export const TEST_SAXON_SPECS: readonly TestOppositionOption[] = [
-  {
-    id: "T-S-WOLF", name: "Wolf Hearthguard",
-    archetypeId: SUPPORT_ARCHETYPE_IDS.saxonInfantry,
-  },
-  {
-    id: "T-S-RAVEN", name: "Raven Shields",
-    archetypeId: SUPPORT_ARCHETYPE_IDS.saxonInfantry,
-  },
-  {
-    id: "T-S-BOAR", name: "Boar Spears",
-    archetypeId: SUPPORT_ARCHETYPE_IDS.saxonInfantry,
-  },
-  {
-    id: "T-S-ASH", name: "Ashwood Shields",
-    archetypeId: SUPPORT_ARCHETYPE_IDS.saxonInfantry,
-  },
-  {
-    id: "T-S-SKIRM", name: "Sea-wolf Skirmishers",
-    archetypeId: SUPPORT_ARCHETYPE_IDS.saxonSkirmishers,
-  },
-  {
-    id: "T-S-ARCH", name: "Yew Bow Levy",
-    archetypeId: SUPPORT_ARCHETYPE_IDS.saxonArchers,
-  },
-  {
-    id: "T-S-STD", name: "Raven Standard",
-    archetypeId: SUPPORT_ARCHETYPE_IDS.saxonStandard,
-  },
-] as const;
+  { id: "great-warband", name: "Great Warband", role: "heavy infantry" },
+  { id: "loose-warband", name: "Loose Warband", role: "light infantry" },
+  { id: "saxon-cavalry", name: "Saxon Cavalry", role: "light cavalry" },
+];

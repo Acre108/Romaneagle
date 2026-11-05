@@ -5,10 +5,7 @@ import {
   TEST_SAXON_SPECS,
   TEST_UNIT_OPTIONS,
 } from "../scenario/TestScenario";
-import {
-  ROMAN_UNIT_ARCHETYPES,
-  getUnitArchetype,
-} from "../units/UnitArchetypes";
+import { ROMAN_UNIT_ARCHETYPES } from "../units/UnitArchetypes";
 
 describe("test scenario", () => {
   it("[key] exposes every Roman archetype and preselects the six specialist trials", () => {
@@ -21,12 +18,9 @@ describe("test scenario", () => {
     expect(TEST_SCENARIO_MISSION.deployment.maximum).toBe(8);
   });
 
-  it("[key] describes a fixed Saxon opposition without constructing retired battle units", () => {
-    expect(TEST_SAXON_SPECS).toHaveLength(7);
-    expect(new Set(TEST_SAXON_SPECS.map((unit) => unit.id)).size).toBe(7);
-    expect(TEST_SAXON_SPECS.every((unit) =>
-      getUnitArchetype(unit.archetypeId).faction === "saxon"
-    )).toBe(true);
+  it("[key] describes a fixed Saxon opposition", () => {
+    expect(TEST_SAXON_SPECS).toHaveLength(3);
+    expect(new Set(TEST_SAXON_SPECS.map((unit) => unit.id)).size).toBe(3);
   });
 
   it("keeps the sandbox outside campaign progression metadata", () => {

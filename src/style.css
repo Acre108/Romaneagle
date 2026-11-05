@@ -1901,8 +1901,8 @@ kbd { color: #c2a65f; font: 700 11px Inter, sans-serif; }
   gap: 8px;
 }
 .grid-left-rail,
-.grid-right-rail { min-height: 0; display: flex; flex-direction: column; gap: 8px; }
-.grid-right-rail { overflow-y: auto; overflow-x: hidden; }
+.grid-right-rail { min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: hidden; }
+.grid-left-rail > * { flex-shrink: 0; }
 .grid-info-panel,
 .grid-objective,
 .grid-action-panel,

@@ -58,6 +58,7 @@ export class Game {
       "saxon",
       objectiveDefinitionForMission(this.mission.id, this.selectedRomanUnitIds),
       this.mission.campaignId === "test",
+      this.mission.battle.enemyLabel,
     );
     this.controller = controller;
     void controller.start().catch((error: unknown) => {

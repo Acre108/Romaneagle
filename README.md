@@ -237,7 +237,7 @@ Press `D` to display block IDs, grid/projected coordinates, depth keys, formatio
 
 ## Known edge cases
 
-- The campaign debrief maps the prototype army’s aggregate surviving-model ratio back onto the formations selected on the campaign page. All three campaign missions have dedicated battlefields, but the grid armies remain fixed prototype formations; campaign catalogue archetypes are not yet mapped into the simplified grid-battle unit profiles. The campaign-select TEST SCENARIO deliberately retains the original demonstration map.
+- The TEST SCENARIO keeps the original demonstration map and its three Saxon formations, and deploys the Roman formations chosen for it. Its ballistarii fight as light infantry with their ranged weapon, because the grid battle has no separate artillery rules yet.
 - Attack follow-up is automatic after an overwhelming retreat and is shown in the on-board `?` outcome preview before confirmation.
 - Charge continuation models a straight breakthrough, but offers no optional mid-charge stop prompt yet.
 - Reform moves one block one square; it does not preview a complete reconstructed formation shape.

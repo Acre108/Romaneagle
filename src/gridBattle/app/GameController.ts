@@ -1,4 +1,4 @@
-import { executeCommand, commandLegality, type GameCommand } from "../commands/executeCommand";
+import { executeCommand, commandLegality, moveIsCommitted, type GameCommand } from "../commands/executeCommand";
 import { planOrder } from "../commands/planOrder";
 import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
@@ -55,10 +55,6 @@ function definitionRows(values: readonly [string, string | number][]): HTMLEleme
   });
 }
 
-function factionLabel(factionId: FactionId): string {
-  return factionId === "roman" ? "Romans" : "Saxons";
-}
-
 export class GridBattleController {
   private state: GameState;
   private readonly renderer: BattlefieldRenderer;
@@ -80,6 +76,7 @@ export class GridBattleController {
     private readonly computerFactionId: FactionId | null = "saxon",
     private readonly objectiveDefinition?: MissionObjectiveDefinition,
     private readonly allowManualConclusion = true,
+    private readonly enemyLabel = "Saxons",
   ) {
     this.state = this.createScenario();
     this.romanFormationBaselines = Object.values(this.state.formations)
@@ -106,8 +103,17 @@ export class GridBattleController {
       return;
     }
     this.bindUi();
+    requiredElement<HTMLButtonElement>("grid-reset").disabled = false;
     this.renderAll();
     this.scheduleComputerTurn();
+  }
+
+  private factionLabel(factionId: FactionId): string {
+    return factionId === "roman" ? "Romans" : this.enemyLabel;
+  }
+
+  private inputLocked(): boolean {
+    return this.concluded || this.isComputerTurn();
   }
 
   private selectedFormation(): Formation | undefined {
@@ -151,7 +157,7 @@ export class GridBattleController {
   private scheduleComputerTurn(delayMs = 420): void {
     if (!this.started || this.concluded || this.computerBusy || this.computerTimer !== null
       || !this.isComputerTurn() || this.pendingOrder) return;
-    requiredElement("grid-action-help").textContent = `${factionLabel(this.state.activeFactionId)} are considering their next order…`;
+    requiredElement("grid-action-help").textContent = `${this.factionLabel(this.state.activeFactionId)} are considering their next order…`;
     this.computerTimer = window.setTimeout(() => {
       this.computerTimer = null;
       this.runComputerActivation();
@@ -216,7 +222,7 @@ export class GridBattleController {
   }
 
   private handleCellTap(position: GridPosition): void {
-    if (this.pendingOrder || this.isComputerTurn()) return;
+    if (this.pendingOrder || this.inputLocked()) return;
     const formation = this.selectedFormation();
     const occupants = blocksAt(this.state, position);
     const enemy = occupants.find((block) => formation && block.factionId !== formation.factionId);
@@ -412,7 +418,7 @@ export class GridBattleController {
   }
 
   private chooseAction(action: UiAction): void {
-    if (this.pendingOrder || this.isComputerTurn()) return;
+    if (this.pendingOrder || this.inputLocked()) return;
     if (action === "end") {
       this.planAndDispatch({ type: "end_activation" });
       return;
@@ -422,11 +428,12 @@ export class GridBattleController {
       requiredElement("grid-action-help").textContent = "Select a formation belonging to the active faction.";
       return;
     }
-    if (action === "hold" || action === "brace") {
-      this.planAndDispatch({ type: action });
+    const legality = commandLegality(this.state, action);
+    if (!legality.accepted) {
+      requiredElement("grid-action-help").textContent = legality.reason ?? "That action is illegal.";
       return;
     }
-    if (action === "fall_back" || action === "battle" || action === "press") {
+    if (action === "hold" || action === "brace" || action === "fall_back" || action === "battle" || action === "press") {
       this.planAndDispatch({ type: action });
       return;
     }
@@ -436,11 +443,6 @@ export class GridBattleController {
         this.planAndDispatch({ type: "merge", otherFormationId: candidates[0]! });
         return;
       }
-    }
-    const legality = commandLegality(this.state, action);
-    if (!legality.accepted) {
-      requiredElement("grid-action-help").textContent = legality.reason ?? "That action is illegal.";
-      return;
     }
     this.planAndDispatch({ type: "choose_action", action });
     const help: Record<BattleAction, string> = {
@@ -477,13 +479,17 @@ export class GridBattleController {
     this.renderer.setMoraleVisible(this.moraleVisible);
   }
 
+  private requestReset(): void {
+    if (this.concluded) return;
+    if (window.confirm("Restart this battle from the beginning? Current progress in it will be lost.")) this.reset();
+  }
+
   private reset(): void {
     if (this.computerTimer !== null) window.clearTimeout(this.computerTimer);
     this.computerTimer = null;
     this.computerBusy = false;
     this.state = this.createScenario();
     this.pendingOrder = null;
-    this.concluded = false;
     this.renderer.render(this.state, null);
     this.renderUi();
   }
@@ -496,7 +502,7 @@ export class GridBattleController {
     }, options);
     requiredElement("grid-move-facing").addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-grid-facing]");
-      if (button && !this.isComputerTurn()) this.planAndDispatch({ type: "finish_move", facing: button.dataset.gridFacing as Direction });
+      if (button && !this.inputLocked()) this.planAndDispatch({ type: "finish_move", facing: button.dataset.gridFacing as Direction });
     }, options);
     requiredElement("grid-order-confirm-accept").addEventListener("click", () => this.confirmPendingOrder(), options);
     requiredElement("grid-order-confirm-cancel").addEventListener("click", () => this.cancelPendingOrder(), options);
@@ -517,7 +523,7 @@ export class GridBattleController {
       requiredElement("grid-axes-toggle").setAttribute("aria-pressed", String(visible));
     }, options);
     requiredElement("grid-frame-camera").addEventListener("click", () => this.renderer.frameBattlefield(), options);
-    requiredElement("grid-reset").addEventListener("click", () => this.reset(), options);
+    requiredElement("grid-reset").addEventListener("click", () => this.requestReset(), options);
     requiredElement("grid-conclude").addEventListener("click", () => this.conclude(), options);
     requiredElement("grid-conclude").hidden = !this.allowManualConclusion;
     requiredElement<HTMLSelectElement>("grid-animation-speed").addEventListener("change", (event) => {
@@ -529,7 +535,7 @@ export class GridBattleController {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if ((event.target as HTMLElement).matches("input, select, textarea")) return;
+    if (this.concluded || (event.target as HTMLElement).matches("input, select, textarea")) return;
     const key = event.key.toLowerCase();
     const shortcuts: Partial<Record<string, UiAction>> = {
       m: "move", a: "attack", s: "shoot", c: "charge", r: "reform", g: "merge", x: "brace", h: "hold",
@@ -539,7 +545,11 @@ export class GridBattleController {
     if (event.key === "Enter" && this.pendingOrder) { event.preventDefault(); this.confirmPendingOrder(); return; }
     if (key === "d") { event.preventDefault(); this.toggleDebug(); return; }
     if (key === "escape") { event.preventDefault(); this.cancelAction(); return; }
-    if (key === "backspace") { event.preventDefault(); this.reset(); return; }
+    if (key === "backspace") {
+      event.preventDefault();
+      if (!event.repeat) this.requestReset();
+      return;
+    }
     const action = shortcuts[key];
     if (action) { event.preventDefault(); this.chooseAction(action); }
   };
@@ -558,6 +568,10 @@ export class GridBattleController {
       return;
     }
     if (this.isComputerTurn()) return;
+    if (moveIsCommitted(this.state)) {
+      requiredElement("grid-action-help").textContent = "This formation has already moved. Choose its final facing to finish.";
+      return;
+    }
     this.state.currentAction = null;
     this.state.phase = this.state.selectedFormationId ? "choosing_action" : "selecting";
     requiredElement("grid-action-help").textContent = "Action cancelled.";
@@ -588,7 +602,7 @@ export class GridBattleController {
       : null;
     name.textContent = formation.name;
     stats.replaceChildren(...definitionRows([
-      ["Faction", factionLabel(formation.factionId)],
+      ["Faction", this.factionLabel(formation.factionId)],
       ["Status", formation.status],
       ["Engagement", formationIsEngaged(this.state, formation.id) ? "Engaged" : "Free"],
       ["Breakup", breakup],
@@ -709,7 +723,7 @@ export class GridBattleController {
 
   private renderUi(): void {
     requiredElement("grid-round").textContent = String(this.state.round);
-    requiredElement("grid-active-faction").textContent = `${factionLabel(this.state.activeFactionId)}${this.isComputerTurn() ? " · Computer" : ""}`;
+    requiredElement("grid-active-faction").textContent = `${this.factionLabel(this.state.activeFactionId)}${this.isComputerTurn() ? " · Computer" : ""}`;
     requiredElement("grid-remaining").textContent = String(remainingActivations(this.state));
     this.renderFormationPanel();
     this.renderBlockPanel();
@@ -738,6 +752,7 @@ export class GridBattleController {
   private conclude(objectiveOutcome?: Exclude<ObjectiveOutcome, "ongoing">): void {
     if (this.concluded) return;
     this.concluded = true;
+    requiredElement<HTMLButtonElement>("grid-reset").disabled = true;
     const romanBlocks = Object.values(this.state.blocks).filter((block) => block.factionId === "roman");
     const saxonBlocks = Object.values(this.state.blocks).filter((block) => block.factionId === "saxon");
     const romanModels = romanBlocks.reduce((sum, block) => sum + block.models, 0);

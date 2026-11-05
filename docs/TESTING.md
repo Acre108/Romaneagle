@@ -19,6 +19,12 @@ The suite covers:
 - representative melee, formation-derived Pressure and Resistance, Attack/Armour/Defence, multi-HP models, model-size capacity, equipment abilities, morale-gated Battle retreats, gap-closing Battle contacts, complete file follow-through, formation-wide infantry and cavalry charges, routing, casualty, and battle-outcome behaviour;
 - deterministic isometric projection, picking, and soldier-mark layout.
 
+The browser smoke test plays the real game in your installed Chrome. It covers consecutive battles, input during the computer's turn, the reset confirmation, the debrief preview, and the sandbox deployment:
+
+```powershell
+npm run test:smoke
+```
+
 Use the smallest relevant area suite while developing:
 
 ```powershell

@@ -51,6 +51,20 @@ function selectedFormation(state: GameState) {
   return state.selectedFormationId ? state.formations[state.selectedFormationId] : undefined;
 }
 
+/** Once a formation has spent movement it is committed: the move can only be finished, not swapped for another order. */
+export function moveIsCommitted(state: GameState): boolean {
+  const formation = selectedFormation(state);
+  return Boolean(formation && state.currentAction === "move" && formation.movementRemaining < formation.unit.movement);
+}
+
+const COMMITTED_MOVE_REASON = "This formation has already moved. Choose its final facing to finish.";
+
+function allowedDuringCommittedMove(command: GameCommand): boolean {
+  return command.type === "move" || command.type === "finish_move" || command.type === "end_activation"
+    || (command.type === "choose_action" && command.action === "move")
+    || command.type.startsWith("debug_");
+}
+
 function routedOrderReason(): CommandResult {
   return { accepted: false, reason: "Morale has broken; this unit is routing automatically." };
 }
@@ -91,6 +105,7 @@ function executeCommandCore(
   options: CommandExecutionOptions = {},
 ): CommandResult {
   const formation = selectedFormation(state);
+  if (moveIsCommitted(state) && !allowedDuringCommittedMove(command)) return { accepted: false, reason: COMMITTED_MOVE_REASON };
   switch (command.type) {
     case "select_cell": return selectCell(state, command.position);
     case "choose_action": {
@@ -164,6 +179,8 @@ function executeCommandCore(
     case "merge": {
       if (!formation) return { accepted: false, reason: "Select a formation first." };
       if (formationFamilyIsRouted(state, formation.id)) return routedOrderReason();
+      const legality = commandLegality(state, "merge");
+      if (!legality.accepted) return legality;
       const mergedId = mergeFormations(state, formation.id, command.otherFormationId);
       if (!mergedId) return { accepted: false, reason: "Only connected, unactivated formations with the same facing may merge." };
       state.selectedFormationId = mergedId;
@@ -173,6 +190,8 @@ function executeCommandCore(
     case "brace": {
       if (!formation) return { accepted: false, reason: "Select a formation first." };
       if (formationFamilyIsRouted(state, formation.id)) return routedOrderReason();
+      const legality = commandLegality(state, "brace");
+      if (!legality.accepted) return legality;
       const result = braceFormation(state, formation.id);
       if (!result.ok) return { accepted: false, reason: result.reason };
       endFormationActivation(state, formation.id);
@@ -180,7 +199,10 @@ function executeCommandCore(
     }
     case "hold": {
       if (formation && formationFamilyIsRouted(state, formation.id)) return routedOrderReason();
-      if (!formation || !holdFormation(state, formation.id)) return { accepted: false, reason: "Select an unactivated formation." };
+      if (!formation) return { accepted: false, reason: "Select an unactivated formation." };
+      const legality = commandLegality(state, "hold");
+      if (!legality.accepted) return legality;
+      if (!holdFormation(state, formation.id)) return { accepted: false, reason: "Select an unactivated formation." };
       return { accepted: true };
     }
     case "fall_back": {
@@ -270,6 +292,7 @@ export function commandLegality(state: GameState, action: BattleAction): Command
   const formation = selectedFormation(state);
   if (!formation) return { accepted: false, reason: "Select a formation first." };
   if (formation.hasActivated) return { accepted: false, reason: "Formation has already activated." };
+  if (moveIsCommitted(state) && action !== "move") return { accepted: false, reason: COMMITTED_MOVE_REASON };
   const blocks = formation.blockIds.map((id) => state.blocks[id]).filter((block) => block !== undefined);
   const engaged = formationIsEngaged(state, formation.id);
   const routed = formationFamilyIsRouted(state, formation.id);

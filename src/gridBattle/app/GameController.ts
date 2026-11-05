@@ -1,5 +1,6 @@
 import { executeCommand, commandLegality, moveIsCommitted, type GameCommand } from "../commands/executeCommand";
 import { planOrder } from "../commands/planOrder";
+import { canSelectFormation } from "../rules/turnSystem";
 import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import { BALANCE } from "../model/config";
@@ -60,6 +61,8 @@ export class GridBattleController {
   private readonly events = new AbortController();
   private debugVisible = false;
   private moraleVisible = false;
+  /** A block being read, not ordered. This is view state only and never reaches the rules. */
+  private inspectedBlockId: string | null = null;
   private concluded = false;
   private started = false;
   private rendererReady = false;
@@ -121,6 +124,27 @@ export class GridBattleController {
 
   private selectedBlock(): TroopBlock | undefined {
     return this.state.selectedBlockId ? this.state.blocks[this.state.selectedBlockId] : undefined;
+  }
+
+  private inspectedBlock(): TroopBlock | undefined {
+    return this.inspectedBlockId ? this.state.blocks[this.inspectedBlockId] : undefined;
+  }
+
+  private inspectedFormation(): Formation | undefined {
+    const formationId = this.inspectedBlock()?.formationId;
+    return formationId ? this.state.formations[formationId] : undefined;
+  }
+
+  private inspectBlock(block: TroopBlock): void {
+    this.inspectedBlockId = block.id;
+    if (!this.pendingOrder) requiredElement("grid-action-help").textContent = "Inspecting only. Press Esc or click one of your formations to return.";
+    this.renderAll();
+  }
+
+  private clearInspection(): boolean {
+    if (!this.inspectedBlockId) return false;
+    this.inspectedBlockId = null;
+    return true;
   }
 
   private dispatch(command: GameCommand, confirmed = false): boolean {
@@ -221,9 +245,13 @@ export class GridBattleController {
   }
 
   private handleCellTap(position: GridPosition): void {
-    if (this.pendingOrder || this.inputLocked()) return;
-    const formation = this.selectedFormation();
+    if (this.concluded) return;
     const occupants = blocksAt(this.state, position);
+    if (this.pendingOrder || this.isComputerTurn()) {
+      if (occupants[0]) this.inspectBlock(occupants[0]);
+      return;
+    }
+    const formation = this.selectedFormation();
     const enemy = occupants.find((block) => formation && block.factionId !== formation.factionId);
     const action = this.state.currentAction;
     if (formation && action === "move") {
@@ -262,6 +290,13 @@ export class GridBattleController {
       if (target?.formationId) this.planAndDispatch({ type: "merge", otherFormationId: target.formationId });
       return;
     }
+    const selectable = occupants.some((block) => block.factionId === this.state.activeFactionId
+      && block.formationId && canSelectFormation(this.state, block.formationId));
+    if (!selectable && occupants[0]) {
+      this.inspectBlock(occupants[0]);
+      return;
+    }
+    this.clearInspection();
     this.dispatch({ type: "select_cell", position });
   }
 
@@ -273,7 +308,9 @@ export class GridBattleController {
 
   private confirmPendingOrder(): void {
     const pending = this.pendingOrder;
-    if (pending) this.dispatch(pending.command, true);
+    if (!pending) return;
+    this.clearInspection();
+    this.dispatch(pending.command, true);
   }
 
   private cancelPendingOrder(): void {
@@ -382,6 +419,7 @@ export class GridBattleController {
   }
 
   private chooseAction(action: UiAction): void {
+    this.clearInspection();
     if (this.pendingOrder || this.inputLocked()) return;
     if (action === "end") {
       this.planAndDispatch({ type: "end_activation" });
@@ -530,6 +568,11 @@ export class GridBattleController {
   };
 
   private cancelAction(): void {
+    if (this.clearInspection()) {
+      requiredElement("grid-action-help").textContent = "Back to your orders.";
+      this.renderAll();
+      return;
+    }
     if (this.pendingOrder) {
       this.cancelPendingOrder();
       return;
@@ -546,7 +589,9 @@ export class GridBattleController {
   }
 
   private renderFormationPanel(): void {
-    const formation = this.selectedFormation();
+    const inspected = this.inspectedFormation();
+    const formation = inspected ?? this.selectedFormation();
+    requiredElement("grid-formation-label").textContent = inspected ? "INSPECTING FORMATION" : "SELECTED FORMATION";
     const name = requiredElement("grid-formation-name");
     const stats = requiredElement("grid-formation-stats");
     if (!formation) {
@@ -587,6 +632,7 @@ export class GridBattleController {
       ["HP per model", formation.unit.hitPointsPerModel],
       ["Morale", `${formation.cohesion}/${formation.maxCohesion}`],
       ["Morale state", moraleState],
+      ["Wavering blocks", `${blocks.filter((block) => blockIsWavering(this.state, block.id)).length}/${blocks.length}`],
       ["Movement", formation.movementRemaining],
       ["Stance", formation.isBraced ? "Braced (+1 armour)" : "Mobile"],
       ["Characters", characters.join(", ") || "None"],
@@ -595,7 +641,9 @@ export class GridBattleController {
   }
 
   private renderBlockPanel(): void {
-    const block = this.selectedBlock();
+    const inspected = this.inspectedBlock();
+    const block = inspected ?? this.selectedBlock();
+    requiredElement("grid-block-label").textContent = inspected ? "INSPECTING BLOCK" : "SELECTED BLOCK";
     const name = requiredElement("grid-block-name");
     const stats = requiredElement("grid-block-stats");
     if (!block) {
@@ -707,6 +755,7 @@ export class GridBattleController {
   }
 
   private renderAll(): void {
+    this.renderer.setInspectedFormation(this.inspectedFormation()?.id ?? null);
     this.renderer.render(this.state, this.pendingOrder?.preview ?? null);
     this.renderUi();
   }

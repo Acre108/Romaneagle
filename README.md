@@ -57,6 +57,7 @@ Every mission uses the established briefing, tactical map, deployment, companion
 | `G` | Merge compatible connected formations |
 | `X` | Brace close-order infantry for +1 armour until it moves |
 | `H` | Hold and recover one morale |
+| Click an enemy | Read its formation and block without changing your selection, including during an order confirmation or the computer's turn; `Esc` returns |
 | `V` | Fall back one square while engaged |
 | `T` | Turn to a new facing while engaged; uses the whole activation |
 | `B` | Battle while engaged |

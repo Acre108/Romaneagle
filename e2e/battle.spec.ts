@@ -26,7 +26,8 @@ async function selectRomanFormation(page: Page): Promise<string> {
     for (let x = 40; x < box.width - 20; x += 30) {
       await page.mouse.click(box.x + x, box.y + y);
       const name = await text(page, "grid-formation-name");
-      if (name && name !== "No formation selected") return name;
+      const inspecting = await text(page, "grid-formation-label") === "INSPECTING FORMATION";
+      if (name && name !== "No formation selected" && !inspecting) return name;
     }
   }
   throw new Error("No Roman formation could be selected.");
@@ -105,6 +106,30 @@ test("reset asks first and does nothing once the battle is over", async ({ page 
   expect(dialogs).toHaveLength(1);
   await expect(page.locator("#battle-result")).toBeVisible();
   await expect(page.locator("#grid-reset")).toBeDisabled();
+});
+
+test("clicking an enemy shows its card without changing the player's selection", async ({ page }) => {
+  await page.goto("/");
+  await page.click("#open-test-scenario");
+  await beginTestBattle(page);
+  await selectRomanFormation(page);
+  const box = await page.locator("#battlefield").boundingBox();
+  if (!box) throw new Error("The battlefield has no size.");
+  let inspected = false;
+  for (let y = 40; y < box.height - 20 && !inspected; y += 22) {
+    for (let x = 40; x < box.width - 20 && !inspected; x += 30) {
+      await page.mouse.click(box.x + x, box.y + y);
+      inspected = await text(page, "grid-formation-label") === "INSPECTING FORMATION";
+    }
+  }
+  expect(inspected).toBe(true);
+  const stats = () => text(page, "grid-formation-stats");
+  expect(await stats()).not.toContain("Romans");
+  expect(await stats()).toContain("Morale");
+  await expect(page.locator("[data-grid-action='end']")).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#grid-formation-label")).toHaveText("SELECTED FORMATION");
+  expect(await stats()).toContain("Romans");
 });
 
 test("the debrief preview does not complete a mission", async ({ page }) => {

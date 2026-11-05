@@ -285,6 +285,7 @@ export class BattlefieldRenderer {
   private readonly terrainOccluders = new Map<string, Graphics>();
   private debugVisible = false;
   private moraleVisible = false;
+  private inspectedFormationId: string | null = null;
   private activationPulseElapsedMs = 0;
   private axesVisible = false;
   private hoveredCell: GridPosition | null = null;
@@ -635,6 +636,10 @@ export class BattlefieldRenderer {
     this.renderDebugCandidates();
     this.updateDebugReadout();
     if (this.state) this.render(this.state);
+  }
+
+  setInspectedFormation(formationId: string | null): void {
+    this.inspectedFormationId = formationId;
   }
 
   setMoraleVisible(visible: boolean): void {
@@ -1843,7 +1848,9 @@ export class BattlefieldRenderer {
     } else {
       for (const block of blocks) {
         this.drawShadow(position, block.id);
-        const selected = state.selectedBlockId === block.id || (!state.selectedBlockId && state.selectedFormationId === block.formationId);
+        const selected = state.selectedBlockId === block.id
+          || (!state.selectedBlockId && state.selectedFormationId === block.formationId)
+          || (block.formationId !== null && this.inspectedFormationId === block.formationId);
         const container = new Container({ label: block.id });
         this.applySurfaceTransform(container, position);
         container.position.set(centre.x, centre.y);

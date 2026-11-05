@@ -47,56 +47,22 @@ describe("unit archetype catalog", () => {
       .toBe(UNIT_ARCHETYPES.length);
   });
 
-  it("[key] provides complete gameplay handling for every archetype", () => {
+  it("[key] gives every archetype what the grid battle and its cards read", () => {
     for (const profile of UNIT_ARCHETYPES) {
-      expect(profile.tags.length).toBeGreaterThan(0);
-      expect(profile.gameplay.melee.attack).toBeGreaterThan(0);
-      expect(profile.gameplay.melee.defence).toBeGreaterThan(0);
-      expect(profile.gameplay.armour.meleeCasualtyMultiplier).toBeGreaterThan(0);
-      expect(profile.gameplay.movement.speed).toBeGreaterThan(0);
-      expect(profile.gameplay.movement.acceleration).toBeGreaterThan(0);
-      expect(profile.gameplay.morale.startingMorale).toBeGreaterThan(0);
-      expect(profile.gameplay.morale.routThreshold).toBeGreaterThan(0);
-      expect(profile.gameplay.terrain.movement.open).toBe(1);
-      expect(profile.gameplay.terrain.movement.rough).toBeGreaterThan(0);
-      expect(profile.equipmentVisual.primary).toBeTruthy();
-      expect(profile.equipmentVisual.shield).toBeTruthy();
-      expect(profile.typicalEquipment.length).toBeGreaterThan(0);
+      expect(profile.startingMorale).toBeGreaterThan(0);
+      expect(profile.defaultStrength).toBeGreaterThan(0);
+      expect(profile.battlefieldRole).toBeTruthy();
+      expect(profile.tacticalIdentity).toBeTruthy();
     }
   });
 
-  it("[key] encodes Roman tactical identities as profile differences", () => {
-    const field = getUnitArchetype(ROMAN_ARCHETYPE_IDS.fieldCentury).gameplay;
-    const auxiliary = getUnitArchetype(
-      ROMAN_ARCHETYPE_IDS.auxiliaryCohortDetachment,
-    ).gameplay;
-    const veteran = getUnitArchetype(
-      ROMAN_ARCHETYPE_IDS.veteranVexillation,
-    ).gameplay;
-    const sagittarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.sagittarii).gameplay;
-    const exploratores = getUnitArchetype(
-      ROMAN_ARCHETYPE_IDS.equitesExploratores,
-    ).gameplay;
-    const equites = getUnitArchetype(ROMAN_ARCHETYPE_IDS.armouredEquites).gameplay;
-    const lanciarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.lanciarii).gameplay;
-    const milites = getUnitArchetype(ROMAN_ARCHETYPE_IDS.militesChristi);
+  it("[key] keeps shields and armour classes where the battle reads them", () => {
+    const field = getUnitArchetype(ROMAN_ARCHETYPE_IDS.fieldCentury);
+    const sagittarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.sagittarii);
 
-    expect(field.armour.meleeCasualtyMultiplier)
-      .toBeLessThan(sagittarii.armour.meleeCasualtyMultiplier);
-    expect(auxiliary.terrain.movement.rough)
-      .toBeGreaterThan(field.terrain.movement.rough);
-    expect(veteran.morale.combatLossMultiplier)
-      .toBeLessThan(field.morale.combatLossMultiplier);
-    expect(equites.melee.chargeImpact)
-      .toBeGreaterThan(exploratores.melee.chargeImpact);
-    expect(lanciarii.damageBonuses).toContainEqual({
-      targetTag: "cavalry",
-      channel: "melee",
-      multiplier: 1.65,
-    });
-    expect(lanciarii.melee.chargeResistance).toBeLessThan(1);
-    expect(milites.tags).toContain("sacred");
-    expect(milites.guardAura?.targetTag).toBe("artillery");
+    expect(field.armourClass).toBe("heavy");
+    expect(field.hasShield).toBe(true);
+    expect(sagittarii.armourClass).not.toBe("heavy");
   });
 
   it("[key] derives card and HUD copy from the archetype profile", () => {
@@ -125,42 +91,15 @@ describe("unit archetype catalog", () => {
       "light-ballistae",
       "plumbatae",
     ]);
-    expect(rangedRomans[3]?.requiredFormation).toBe("battery");
-    expect(rangedRomans[4]?.chargeDisruptionSeconds).toBe(3);
     for (const weapon of UNIT_ARCHETYPES.flatMap((profile) =>
       profile.rangedWeapon ? [profile.rangedWeapon] : [])) {
       expect(weapon.maximumAmmunition).toBeGreaterThan(0);
       expect(weapon.minimumRange).toBeGreaterThanOrEqual(0);
-      expect(weapon.preferredRange).toBeGreaterThanOrEqual(weapon.minimumRange);
-      expect(weapon.maximumRange).toBeGreaterThanOrEqual(weapon.preferredRange);
-      expect(weapon.volleyInterval).toBeGreaterThan(0);
+      expect(weapon.maximumRange).toBeGreaterThanOrEqual(weapon.minimumRange);
       expect(weapon.armourPenetration).toBeGreaterThanOrEqual(0);
       expect(weapon.armourPenetration).toBeLessThanOrEqual(1);
       expect(weapon.shieldPenetration).toBeGreaterThanOrEqual(0);
       expect(weapon.shieldPenetration).toBeLessThanOrEqual(1);
     }
   });
-
-  it("[key] exposes only the contextual formation modes supported by an archetype", () => {
-    const auxiliary = getUnitArchetype(
-      ROMAN_ARCHETYPE_IDS.auxiliaryCohortDetachment,
-    );
-    const armouredEquites = getUnitArchetype(ROMAN_ARCHETYPE_IDS.armouredEquites);
-    const fieldCentury = getUnitArchetype(ROMAN_ARCHETYPE_IDS.fieldCentury);
-
-    expect(auxiliary.formationModes?.map((mode) => mode.id)).toEqual([
-      "close-order",
-      "loose-order",
-    ]);
-    expect(auxiliary.formationModes?.map((mode) => mode.formation.spacing)).toEqual([
-      "close",
-      "loose",
-    ]);
-    expect(armouredEquites.formationModes?.map((mode) => mode.id)).toEqual([
-      "line",
-      "wedge",
-    ]);
-    expect(fieldCentury.formationModes).toBeUndefined();
-  });
-
 });

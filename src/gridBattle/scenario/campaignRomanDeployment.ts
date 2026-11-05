@@ -71,14 +71,14 @@ function gridUnitType(archetype: UnitArchetypeProfile): UnitType {
 function unitProfile(archetype: UnitArchetypeProfile, formationMode: FormationMode): UnitProfile {
   const unitType = gridUnitType(archetype);
   const equipment: EquipmentAbility[] = [];
-  if (archetype.equipmentVisual.shield !== "none") equipment.push("shield_front");
+  if (archetype.hasShield) equipment.push("shield_front");
   const rangedWeaponId = archetype.rangedWeapon?.id;
   const modelSize = unitType === "light_cavalry" || unitType === "heavy_cavalry" ? 3 : 2;
   return {
     unitType,
     modelSize,
     attack: unitType === "light_infantry" ? 2 : 3,
-    armour: archetype.gameplay.armour.class === "heavy" ? 1 : 0,
+    armour: archetype.armourClass === "heavy" ? 1 : 0,
     defence: 0,
     hitPointsPerModel: hitPointsPerModel(formationMode, modelSize),
     movement: BALANCE.movement[unitType],
@@ -141,7 +141,7 @@ function addFormation(
     facing: "north",
     formationMode,
     unit: unitProfile(archetype, formationMode),
-    cohesion: Math.max(1, Math.min(10, Math.round(archetype.gameplay.morale.startingMorale / 10))),
+    cohesion: Math.max(1, Math.min(10, Math.round(archetype.startingMorale / 10))),
     maxCohesion: 10,
     initialModelCount: definition.count,
     casualtyMoraleStage: 0,

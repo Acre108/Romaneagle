@@ -9,8 +9,8 @@ export function formatProfileClassification(profile: UnitArchetypeProfile): stri
 }
 
 export function formatProfileHandling(profile: UnitArchetypeProfile): string {
-  return `${titleCase(profile.gameplay.armour.class)} armour · ` +
-    `${titleCase(profile.gameplay.movement.class)} speed`;
+  return `${titleCase(profile.armourClass)} armour · ` +
+    `${titleCase(profile.speedClass)} speed`;
 }
 
 /** Only weapons that fire in battle belong on a card. Other catalogue equipment has no grid-battle effect yet. */

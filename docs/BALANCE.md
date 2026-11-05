@@ -1,8 +1,10 @@
 # Prototype balance baselines
 
-These are deterministic matchup checks, not final competitive balance. Their purpose is to keep each Roman specialist legible while formations, terrain, and player command remain the primary source of advantage.
+These notes record the rules the grid battle uses now, followed by design targets it does not implement yet. Formations, terrain, and player command remain the primary source of advantage.
 
-## Current specialist budget
+## Specialist design targets (not built)
+
+No battle rule implements these yet. They record what each Roman specialist is meant to feel like.
 
 - **Armoured Equites:** a Wedge causes about five immediate frontal casualties only against a vulnerable, loose, or mob target. Prepared close-order heavy infantry still denies frontal impact. Wedge improves impact but reduces sustained melee output by 10%.
 - **Plumbatarii:** a full-strength volley causes about four casualties against heavy cavalry. Only two volleys are carried; a damaging hit breaks a committed charge and creates a three-second counterattack window.
@@ -12,7 +14,7 @@ These are deterministic matchup checks, not final competitive balance. Their pur
 
 ## Tuning rule
 
-Change these values through archetype or weapon profiles and update the relevant archetype or grid-battle tests when the intended matchup changes. Avoid per-soldier exceptions or random combat rolls: they make formation decisions harder to read and reproduce.
+Change unit values through the scenario builders, `BALANCE` or weapon profiles, and update the relevant grid-battle tests when the intended matchup changes. Avoid per-soldier exceptions or random combat rolls: they make formation decisions harder to read and reproduce.
 
 ## Grid-battle unit model
 
@@ -27,7 +29,16 @@ The grid prototype uses one compact profile per formation: model size, Attack, A
 - `shield_front` grants `+1` Armour only against the front face. Brace grants another `+1` Armour until the formation moves.
 - `brace_against_charge` is equipment, not a permanent spear stat. It adds charge Resistance and counter-damage only while the equipped close-order infantry is actually braced and presents its front.
 
-The campaign unit catalogue is still a separate design catalogue. Mapping its richer archetypes and equipment selections into these grid-battle profiles is deliberately deferred until the fixed sandbox matchups establish useful values.
+The unit catalogue now holds only what the grid battle and its cards read: type, class, strength, spacing, armour class, speed class, starting morale, shield, ranged weapon, and a one-line identity. Battle stats are derived from those in the scenario builders.
+
+Not built, and removed from the catalogue until each has a battle rule (the values remain in git history at `0095d02`, `src/units/UnitArchetypes.ts` and `src/units/RangedWeapons.ts`):
+
+- Per-unit melee values, charge impact and resistance, pursuit, and tagged damage bonuses such as Lanciarii against cavalry.
+- Real-time handling: speed values, turn speed, acceleration, stamina, and per-terrain movement and disruption.
+- Morale multipliers and individual rout thresholds.
+- Guard auras, unique abilities such as Tortoise, switchable formation modes, and unit tags.
+- Equipment drawing data and typical equipment lists.
+- Weapon preferred range, volley timing, firing speed, morale shock, resupply, charge disruption, melee fallback, and required formations.
 
 ## Grid terrain prototype
 

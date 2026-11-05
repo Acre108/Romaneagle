@@ -7,7 +7,7 @@ import { addPosition, directionBetween, directionVector, formationEdgeType, manh
 import { applyTacticalMoraleShock, damageBlock, meleeDamagePreview, pressurePreview, resolvePressure, withMoraleOrder } from "./combat";
 import { canTranslateFormation, formationBlocks, translateFormation, type RuleResult } from "./movement";
 import { provisionalFormationFamily, recalculateFormationConnectivity } from "./splitting";
-import { effectiveBlockFacing, faceFormationTowardNearestEnemies } from "./blockFacing";
+import { blockFacing } from "./blockFacing";
 import { blockIsWavering } from "./wavering";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
 import { clearFormationBrace } from "./brace";
@@ -56,7 +56,7 @@ export function engagedContacts(state: GameState, formationId: string): EngagedC
       continue;
     }
     const defenderIds: string[] = [];
-    for (const direction of contactDirections(effectiveBlockFacing(state, attacker.id))) {
+    for (const direction of contactDirections(blockFacing(state, attacker.id))) {
       const defender = enemyBlockAt(state, addPosition(attacker.position, directionVector(direction)), attacker.factionId);
       if (defender && !claimedDefenders.has(defender.id)) defenderIds.push(defender.id);
     }
@@ -161,7 +161,7 @@ function flankContactPriority(state: GameState, position: GridPosition, factionI
     const enemyFormation = enemy?.formationId ? state.formations[enemy.formationId] : undefined;
     const incomingDirection = enemy ? directionBetween(enemy.position, position) : null;
     if (!enemy || !enemyFormation || !incomingDirection) continue;
-    const edge = formationEdgeType(effectiveBlockFacing(state, enemy.id), incomingDirection);
+    const edge = formationEdgeType(blockFacing(state, enemy.id), incomingDirection);
     priority = Math.max(priority, edge === "rear" ? 3 : edge === "side" ? 2 : 1);
   }
   return priority;
@@ -377,7 +377,6 @@ function resolveEngagedContacts(
     participant.id,
     Math.max(...formationBlocks(state, participant).map((block) => forwardRank(block.position, participant.facing))),
   ] as const));
-  for (const participant of participants) faceFormationTowardNearestEnemies(state, participant.id);
   const contacts = participants.flatMap((candidate) => engagedContacts(state, candidate.id));
   const movementExclusions = new Set<string>();
   const counteredDefenders = new Set<string>();
@@ -447,7 +446,6 @@ function resolveEngagedContacts(
       allowAnyContact: true,
       pressureBonus: order === "press" ? BALANCE.pressPressureBonus : 0,
       damagePenalty: order === "press" ? BALANCE.pressDamagePenalty : 0,
-      followUp: false,
       pushThreshold: order === "battle" ? BALANCE.battlePushPressureThreshold : BALANCE.pushPressureThreshold,
       defenceRollOverride: previewOptions.defenceRollOverride,
     };
@@ -507,11 +505,6 @@ function resolveEngagedContacts(
         )) gapCloserIds.add(movedId);
       }
     }
-    for (const participant of participants) {
-      if (state.formations[participant.id] && formationIsEngaged(state, participant.id)) {
-        faceFormationTowardNearestEnemies(state, participant.id);
-      }
-    }
     if (order === "battle" && gapCloserIds.size > 0) {
       const closingContacts = participants
         .filter((participant) => state.formations[participant.id])
@@ -521,11 +514,6 @@ function resolveEngagedContacts(
     }
     for (const participant of participants) {
       if (state.formations[participant.id]) refillFormationFront(state, participant.id);
-    }
-    for (const participant of participants) {
-      if (state.formations[participant.id] && formationIsEngaged(state, participant.id)) {
-        faceFormationTowardNearestEnemies(state, participant.id);
-      }
     }
     const groupDescription = participants.length > 1 ? ` across ${participants.length} provisional groups` : "";
     emitEvent(state, "engaged_order_resolved", `${formation.name} chose to ${order}; ${resolved} block${resolved === 1 ? "" : "s"} fought and ${counterattacks} defender${counterattacks === 1 ? "" : "s"} counterattacked${groupDescription}.`, {

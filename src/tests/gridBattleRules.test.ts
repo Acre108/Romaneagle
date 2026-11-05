@@ -37,7 +37,6 @@ import { createPrototypeGridScenario } from "../gridBattle/scenario/prototypeSce
 import { executeCommand } from "../gridBattle/commands/executeCommand";
 import { planOrder } from "../gridBattle/commands/planOrder";
 import { canSelectFormation, endFormationActivation, remainingActivations } from "../gridBattle/rules/turnSystem";
-import { effectiveBlockFacing } from "../gridBattle/rules/blockFacing";
 import { addMapTerrainObject, setMapEdgeFeature, setMapElevation, setMapTerrain } from "../gridBattle/model/battlefieldMap";
 import {
   buildingCellAt,
@@ -125,7 +124,7 @@ describe("grid battle rules", () => {
     expect(state.blocks["defend-b2"]!.position).toEqual({ x: 4, y: 3 });
   });
 
-  it("8b. plans an Attack outcome without mutating state and requires confirmation", () => {
+  it("8b. plans a Press outcome without mutating state and requires confirmation", () => {
     const state = blankState();
     addFormation(state, "attack", [{ x: 3, y: 4 }], "north", "roman");
     addFormation(state, "defend", [{ x: 3, y: 3 }], "south", "saxon");
@@ -133,14 +132,14 @@ describe("grid battle rules", () => {
     state.selectedFormationId = "attack";
     const before = structuredClone(state);
 
-    const planned = planOrder(state, { type: "attack", attackerId: "attack-b1", defenderId: "defend-b1" });
+    const planned = planOrder(state, { type: "press" });
 
     expect(state).toEqual(before);
     expect(planned).toMatchObject({
       ok: true,
       order: {
-        command: { type: "attack", attackerId: "attack-b1", defenderId: "defend-b1", followUp: true },
-        confirmation: { kind: "combat", title: "Confirm attack" },
+        command: { type: "press" },
+        confirmation: { kind: "combat", title: "Confirm press" },
       },
     });
     expect(planned.order!.confirmation!.tiles.every((tile) => tile.certainty === "possible")).toBe(true);
@@ -156,13 +155,12 @@ describe("grid battle rules", () => {
     addFormation(state, "defend", [{ x: 3, y: 3 }], "south", "saxon");
     attachCharacter(state, "pressure-test", "attack-b1", "roman", "centurion", { pressureBonus: 20 });
     state.formations.attack!.unit.attack = 4;
+    state.formations.defend!.unit.attack = 0;
     state.formations.defend!.unit.defence = 25;
     state.blocks["defend-b1"]!.models = 1;
     state.selectedFormationId = "attack";
 
-    const confirmation = planOrder(state, {
-      type: "attack", attackerId: "attack-b1", defenderId: "defend-b1",
-    }).order!.confirmation!;
+    const confirmation = planOrder(state, { type: "press" }).order!.confirmation!;
 
     expect(confirmation.tiles).toContainEqual(expect.objectContaining({
       factionId: "saxon", chance: 25,
@@ -871,8 +869,6 @@ describe("grid battle rules", () => {
     const state = blankState();
     addFormation(state, "roman", [{ x: 2, y: 3 }, { x: 3, y: 2 }], "north", "roman");
     addFormation(state, "saxon", [{ x: 2, y: 2 }, { x: 3, y: 1 }], "south", "saxon");
-    state.blocks["roman-b1"]!.engagementFacing = "north";
-    state.blocks["roman-b2"]!.engagementFacing = "west";
 
     expect(engagedContacts(state, "roman")).toEqual([
       { attackerId: "roman-b1", defenderId: "saxon-b1" },
@@ -1008,21 +1004,6 @@ describe("grid battle rules", () => {
     state.formations.roman!.cohesion = 3;
     expect(blockIsWavering(state, "roman-b1")).toBe(true);
     expect(blockIsWavering(state, "roman-b2")).toBe(true);
-  });
-
-  it("42g. judges formation flanks from the unit facing rather than a block's temporary facing", () => {
-    const state = blankState();
-    addFormation(state, "roman", [{ x: 3, y: 3 }], "north", "roman");
-    addFormation(state, "saxon", [{ x: 3, y: 2 }], "south", "saxon");
-    state.blocks["roman-b1"]!.engagementFacing = "east";
-    state.formations.roman!.unit.attack = 0;
-    state.formations.saxon!.unit.attack = 0;
-    attachCharacter(state, "roman-resistance", "roman-b1", "roman", "commander", { resistanceBonus: 99 });
-    attachCharacter(state, "saxon-resistance", "saxon-b1", "saxon", "commander", { resistanceBonus: 99 });
-
-    expect(resolveEngagedOrder(state, "saxon", "battle")).toBe(1);
-    expect(state.formations.roman!.cohesion).toBe(8);
-    expect(state.eventLog.some((event) => event.type === "morale_shock")).toBe(false);
   });
 
   it("43. lets a large formed unit waver before it fragments", () => {
@@ -1352,31 +1333,6 @@ describe("grid battle rules", () => {
     expect(executeCommand(state, { type: "battle" }, { confirmed: true }).accepted).toBe(true);
     expect(state.blocks["roman-b1"]!.models).toBe(9);
     expect(state.blocks["roman-b2"]).toBeUndefined();
-  });
-
-  it("60. turns every block in an enveloping formation toward its nearest target", () => {
-    const state = blankState();
-    state.activeFactionId = "saxon";
-    addFormation(state, "roman", [{ x: 3, y: 3 }], "north", "roman");
-    addFormation(state, "saxon", [
-      { x: 3, y: 2 },
-      { x: 2, y: 3 },
-      { x: 4, y: 3 },
-      { x: 3, y: 4 },
-    ], "south", "saxon");
-    state.formations.saxon!.unit.attack = -2;
-    state.formations.saxon!.formationMode = "open";
-    state.formations.saxon!.unit.unitType = "light_infantry";
-    state.formations.roman!.unit.attack = -2;
-    attachCharacter(state, "resistance-test", "roman-b1", "roman", "commander", { resistanceBonus: 99 });
-
-    expect(resolveEngagedOrder(state, "saxon", "battle")).toBe(4);
-
-    expect(effectiveBlockFacing(state, "saxon-b1")).toBe("south");
-    expect(effectiveBlockFacing(state, "saxon-b2")).toBe("east");
-    expect(effectiveBlockFacing(state, "saxon-b3")).toBe("west");
-    expect(effectiveBlockFacing(state, "saxon-b4")).toBe("north");
-    expect(meleeDamagePreview(state, "roman-b1", "saxon-b2")?.contactEdge).toBe("front");
   });
 
   it("60b. reorders the wide Saxon formation into three files through the ford", () => {

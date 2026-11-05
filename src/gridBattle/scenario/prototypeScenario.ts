@@ -329,7 +329,7 @@ export function createPrototypeGridScenario(): GameState {
     facing: "west",
     unitType: "light_infantry",
     formationMode: "open",
-    cohesion: 6,
+    cohesion: 7,
     positions: rectangularPositions(13, 1, 4, 3),
     colourName: "dark brown",
   });

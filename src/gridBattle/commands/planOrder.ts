@@ -1,7 +1,7 @@
 import { BALANCE } from "../model/config";
-import type { GameState, OrderConfirmationPreview } from "../model/types";
-import { chargeConfirmationPreview, pressurePreview, resolvePressure } from "../rules/combat";
-import { aggregateCombatOutcomes, blockCombatMath } from "../rules/combatPreview";
+import type { GameState, OrderConfirmationPreview, PressurePreview } from "../model/types";
+import { chargeConfirmationPreview, pressurePreview } from "../rules/combat";
+import { aggregateCombatOutcomes, blockCombatMath, contactSummaryLines } from "../rules/combatPreview";
 import { oppositeDirection } from "../rules/direction";
 import { engagedContacts, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";
 import { planFormationMove } from "../rules/movement";
@@ -76,42 +76,6 @@ function planFallBack(state: GameState, command: Extract<GameCommand, { type: "f
   });
 }
 
-function planAttack(state: GameState, command: Extract<GameCommand, { type: "attack" }>): OrderPlanResult {
-  const attacker = state.blocks[command.attackerId];
-  const formation = selectedFormation(state);
-  if (!formation || !attacker || !formation.blockIds.includes(attacker.id)) return rejected("Select the attacking formation.");
-  if (formationFamilyIsRouted(state, formation.id)) return rejected("Morale has broken; this unit is routing automatically.");
-  const preview = pressurePreview(state, command.attackerId, command.defenderId);
-  if (!preview) return rejected("Attack must use a front block against the square directly ahead.");
-  const followUp = command.followUp ?? preview.netPressure >= BALANCE.chaoticRetreatPressureThreshold;
-  const plannedCommand: GameCommand = { ...command, followUp };
-  const outcomes = Array.from({ length: 100 }, (_, defenceRoll) => {
-    const simulated = structuredClone(state);
-    resolvePressure(simulated, command.attackerId, command.defenderId, { followUp, defenceRollOverride: defenceRoll });
-    return simulated;
-  });
-  const mathByBlock = new Map([
-    [command.attackerId, blockCombatMath(preview, "attacker")],
-    [command.defenderId, blockCombatMath(preview, "defender")],
-  ]);
-  const outcomePreview = aggregateCombatOutcomes(
-    state,
-    outcomes,
-    new Set([command.attackerId, command.defenderId]),
-    mathByBlock,
-  );
-  return accepted(plannedCommand, {
-    kind: "combat",
-    title: "Confirm attack",
-    detail: followUp
-      ? "Highlighted tiles show positions across all defence rolls; the attacker follows an overwhelming retreat. ! is certain; ? is possible. Hover for percentages."
-      : "Highlighted tiles show blocks holding, retreating, or being removed. ! is certain; ? is possible. Hover for percentages.",
-    tiles: outcomePreview.tiles,
-    damage: outcomePreview.damage,
-    forecast: outcomePreview.forecast,
-  });
-}
-
 function planCharge(state: GameState, command: Extract<GameCommand, { type: "charge" }>): OrderPlanResult {
   const attacker = state.blocks[command.attackerId];
   const formation = selectedFormation(state);
@@ -152,6 +116,7 @@ function planEngagedCombat(
     const existing = mathByBlock.get(blockId) ?? [];
     mathByBlock.set(blockId, [...existing, ...(existing.length > 0 ? ["—"] : []), ...lines]);
   };
+  const contactPreviews: PressurePreview[] = [];
   for (const contact of contacts) {
     const preview = pressurePreview(state, contact.attackerId, contact.defenderId, {
       allowAnyContact: true,
@@ -160,6 +125,7 @@ function planEngagedCombat(
       pushThreshold: command.type === "battle" ? BALANCE.battlePushPressureThreshold : BALANCE.pushPressureThreshold,
     });
     if (!preview) continue;
+    contactPreviews.push(preview);
     appendMath(contact.attackerId, blockCombatMath(preview, "attacker"));
     appendMath(contact.defenderId, blockCombatMath(preview, "defender"));
   }
@@ -178,6 +144,7 @@ function planEngagedCombat(
     tiles: outcomePreview.tiles,
     damage: outcomePreview.damage,
     forecast: outcomePreview.forecast,
+    contactSummary: contactSummaryLines(contactPreviews),
   });
 }
 
@@ -185,7 +152,6 @@ export function planOrder(state: GameState, command: GameCommand): OrderPlanResu
   switch (command.type) {
     case "move": return planMove(state, command);
     case "fall_back": return planFallBack(state, command);
-    case "attack": return planAttack(state, command);
     case "shoot": return planShoot(state, command);
     case "charge": return planCharge(state, command);
     case "battle":

@@ -38,12 +38,12 @@ import {
 } from "./direction";
 import { formationBlocks, planFormationAdvance } from "./movement";
 import { originalFormationId, provisionalFormationFamily, recalculateAllConnectivity, recalculateFormationConnectivity } from "./splitting";
-import { clearFormationEngagementFacings, effectiveBlockFacing } from "./blockFacing";
+import { blockFacing } from "./blockFacing";
 import { clearBlockFormationBrace, clearFormationBrace } from "./brace";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
 import { blockIsBreaking, blockIsWavering } from "./wavering";
 import { advanceCombatFile } from "./fileAdvance";
-import { aggregateCombatOutcomes, blockCombatMath } from "./combatPreview";
+import { aggregateCombatOutcomes, blockCombatMath, contactSummaryLines } from "./combatPreview";
 import {
   blockHitPoints,
   blockModelsAfterDamage,
@@ -71,7 +71,7 @@ export function rearSupport(state: GameState, blockId: string): number {
   const block = state.blocks[blockId];
   const formation = block?.formationId ? state.formations[block.formationId] : undefined;
   if (!block || !formation || block.isContested) return 0;
-  const behind = directionVector(oppositeDirection(effectiveBlockFacing(state, block.id)));
+  const behind = directionVector(oppositeDirection(blockFacing(state, block.id)));
   let support = 0;
   let cursor = block.position;
   for (let depth = 0; depth < BALANCE.rearSupportMaximum; depth += 1) {
@@ -130,7 +130,7 @@ export function defendingResistanceBreakdown(
   if (!block || !formation) return [];
   const character = hostCharacter(state, block);
   const terrain = terrainAt(state, block.position)!;
-  const facing = effectiveBlockFacing(state, block.id);
+  const facing = blockFacing(state, block.id);
   const spearBonus = cavalryCharge && formation.isBraced && hasEquipment(formation, "brace_against_charge")
     && incomingDirection === facing && !blockIsWavering(state, block.id)
     ? BALANCE.spearChargeResistance
@@ -325,7 +325,7 @@ export function meleeDamagePreview(
   if (!attacker || !defender || !attackerFormation || !defenderFormation) return null;
   const incomingDirection = directionBetween(defender.position, attacker.position);
   const contactEdge = incomingDirection
-    ? formationEdgeType(effectiveBlockFacing(state, defender.id), incomingDirection)
+    ? formationEdgeType(blockFacing(state, defender.id), incomingDirection)
     : "side";
   const flankBonus = contactEdge === "front" ? 0 : BALANCE.flankDamageBonus;
   const terrainDamageBonus = terrainMeleeDamageReceivedBonus(terrainAt(state, defender.position));
@@ -373,7 +373,6 @@ export interface PressureOptions {
   damagePenalty?: number;
   cavalryCharge?: boolean;
   allowAnyContact?: boolean;
-  followUp?: boolean;
   pushThreshold?: number;
   defenceRollOverride?: number;
 }
@@ -401,9 +400,9 @@ export function pressurePreview(
   const defenderFormation = defender?.formationId ? state.formations[defender.formationId] : undefined;
   if (!attacker || !defender || !attackerFormation || !defenderFormation || attacker.factionId === defender.factionId) return null;
   const contactDirection = directionBetween(defender.position, attacker.position)
-    ?? (attacker.isContested && defender.isContested ? effectiveBlockFacing(state, defender.id) : null);
+    ?? (attacker.isContested && defender.isContested ? blockFacing(state, defender.id) : null);
   if (!contactDirection || (!options.allowAnyContact
-    && directionBetween(attacker.position, defender.position) !== effectiveBlockFacing(state, attacker.id))) return null;
+    && directionBetween(attacker.position, defender.position) !== blockFacing(state, attacker.id))) return null;
   const attack = attackingPressure(state, attackerId, options.pressureBonus ?? 0);
   const defence = defendingResistance(state, defenderId, contactDirection, options.cavalryCharge ?? false);
   const net = attack - defence;
@@ -670,7 +669,6 @@ function clearOrphanedContestedCell(state: GameState, position: GridPosition): s
   const affectedFormationIds = new Set<string>();
   for (const survivor of occupants) {
     survivor.isContested = false;
-    survivor.engagementFacing = undefined;
     if (survivor.formationId) affectedFormationIds.add(survivor.formationId);
   }
   return [...affectedFormationIds];
@@ -742,7 +740,7 @@ export function retreatBlock(
 ): RetreatResult {
   const defender = state.blocks[blockId];
   if (!defender) return "destroyed";
-  const direction = retreatDirection ?? oppositeDirection(effectiveBlockFacing(state, defender.id));
+  const direction = retreatDirection ?? oppositeDirection(blockFacing(state, defender.id));
   const retreat = planRetreat(state, defender, direction, mode);
   const affectedFormationIds = new Set(retreat.chain.map((block) => block.formationId).filter((id): id is string => Boolean(id)));
   if (!retreat.blocked) {
@@ -758,7 +756,6 @@ export function retreatBlock(
       createContestedCell(state, retreat.chain[collisionIndex]!.id, retreat.enemyCollisionId!);
     }
     for (const block of retreat.chain) {
-      block.engagementFacing = undefined;
       block.wavering = true;
       block.hasRetreatedThisRound = true;
     }
@@ -855,15 +852,7 @@ export function resolvePressure(
   const destroyedByMelee = preview.expectedDamage > 0
     ? damageBlock(state, defenderId, preview.expectedDamage, "melee")
     : false;
-  if (destroyedByMelee) {
-    if (options.followUp && state.blocks[attackerId]) {
-      clearBlockFormationBrace(state, state.blocks[attackerId]);
-      state.blocks[attackerId]!.position = defenderPosition;
-      emitEvent(state, "block_advanced", `${attacker.id} advanced into the gap.`, { blockIds: [attacker.id], position: defenderPosition });
-      if (attacker.formationId) recalculateFormationConnectivity(state, attacker.formationId);
-    }
-    return { ok: true, vacated: true, compressed: false };
-  }
+  if (destroyedByMelee) return { ok: true, vacated: true, compressed: false };
   const survivingDefender = state.blocks[defenderId];
   if (preview.result === "holds") return { ok: true, vacated: false, compressed: false };
   if (preview.result === "wavers") {
@@ -874,12 +863,7 @@ export function resolvePressure(
   if (!retreatDirection) return { ok: false, vacated: false, compressed: false };
   const retreat = retreatBlock(state, defenderId, retreatDirection, preview.retreatMode);
   const vacated = retreat === "retreated" || retreat === "cascade" || retreat === "chaotic" || retreat === "destroyed";
-  if (vacated && options.followUp && state.blocks[attackerId]) {
-    clearBlockFormationBrace(state, state.blocks[attackerId]);
-    state.blocks[attackerId]!.position = defenderPosition;
-    emitEvent(state, "block_advanced", `${attacker.id} advanced after the retreat.`, { blockIds: [attacker.id], position: defenderPosition });
-    if (attacker.formationId) recalculateFormationConnectivity(state, attacker.formationId);
-  } else if (retreat === "compressed" && state.blocks[attackerId] && state.blocks[defenderId]) {
+  if (retreat === "compressed" && state.blocks[attackerId] && state.blocks[defenderId]) {
     createContestedCell(state, attackerId, defenderId);
   }
   return { ok: true, vacated, compressed: retreat === "compressed" };
@@ -927,7 +911,7 @@ function infantryChargeBonusForContact(
   const defenderFormation = defender.formationId ? state.formations[defender.formationId] : undefined;
   const incomingDirection = directionBetween(defender.position, attackerPosition);
   const bonusNullified = Boolean(defenderFormation?.isBraced && incomingDirection
-    && formationEdgeType(effectiveBlockFacing(state, defender.id), incomingDirection) === "front");
+    && formationEdgeType(blockFacing(state, defender.id), incomingDirection) === "front");
   return {
     attackBonus: bonusNullified ? 0 : BALANCE.infantryChargePressureBonus,
     bonusNullified,
@@ -997,6 +981,7 @@ export function chargeConfirmationPreview(
   const contacts = formationChargeContacts(contactState, contactFormation);
   const involved = new Set(contacts.flatMap((contact) => [contact.attackerId, contact.defenderId]));
   const mathByBlock = new Map<string, string[]>();
+  const contactPreviews: PressurePreview[] = [];
   const appendMath = (blockId: string, lines: readonly string[]): void => {
     const existing = mathByBlock.get(blockId) ?? [];
     mathByBlock.set(blockId, [...existing, ...(existing.length > 0 ? ["—"] : []), ...lines]);
@@ -1012,6 +997,7 @@ export function chargeConfirmationPreview(
       cavalryCharge: isCavalry(preview.unitType),
     });
     if (!pressure) continue;
+    contactPreviews.push(pressure);
     const impact = isCavalry(preview.unitType) ? [`Charge impact: ${preview.impactDamage} guaranteed damage before melee.`] : [];
     appendMath(contact.attackerId, [...impact, ...blockCombatMath(pressure, "attacker")]);
     appendMath(contact.defenderId, [...impact, ...blockCombatMath(pressure, "defender")]);
@@ -1031,6 +1017,7 @@ export function chargeConfirmationPreview(
     tiles: outcomePreview.tiles,
     damage: outcomePreview.damage,
     forecast: outcomePreview.forecast,
+    contactSummary: contactSummaryLines(contactPreviews),
   };
 }
 
@@ -1043,7 +1030,6 @@ function translateChargingFormation(state: GameState, formationId: string, previ
   })));
   if (!overflow) return false;
   clearFormationBrace(state, formation.id);
-  clearFormationEngagementFacings(state, formation.id);
   for (const relocation of preview.relocations) {
     const block = state.blocks[relocation.blockId]!;
     block.position = { ...relocation.destination };
@@ -1097,7 +1083,6 @@ function resolveChargeContacts(
       });
       const result = resolvePressure(state, attacker.id, defender.id, {
         pressureBonus: bonus.attackBonus,
-        followUp: false,
         defenceRollOverride: options.defenceRollOverride,
       });
       if (result.vacated && state.blocks[attacker.id]) {
@@ -1125,7 +1110,7 @@ function resolveChargeContacts(
       const incomingDirection = directionBetween(currentDefender.position, attacker.position);
       const defenderFormation = currentDefender.formationId ? state.formations[currentDefender.formationId] : undefined;
       if (defenderFormation?.isBraced && hasEquipment(defenderFormation, "brace_against_charge")
-        && incomingDirection === effectiveBlockFacing(state, currentDefender.id) && !blockIsWavering(state, currentDefender.id)) {
+        && incomingDirection === blockFacing(state, currentDefender.id) && !blockIsWavering(state, currentDefender.id)) {
         damageBlock(state, attacker.id, 1, "braced spears");
         if (!state.blocks[attacker.id]) break;
       }
@@ -1139,7 +1124,6 @@ function resolveChargeContacts(
         const pressureResult = resolvePressure(state, attacker.id, currentDefender.id, {
           pressureBonus: attacker.chargeMomentum,
           cavalryCharge: true,
-          followUp: false,
           defenceRollOverride: options.defenceRollOverride,
         });
         advanced = pressureResult.vacated;

@@ -5,7 +5,7 @@ import { BALANCE } from "../model/config";
 import { positionKey } from "../model/occupancy";
 import type { Direction, FactionId, Formation, GameState, TroopBlock } from "../model/types";
 import { chargePreview, pressurePreview } from "../rules/combat";
-import { CARDINAL_DIRECTIONS, manhattanDistance } from "../rules/direction";
+import { CARDINAL_DIRECTIONS, directionBetween, manhattanDistance } from "../rules/direction";
 import { engagedContacts, formationIsEngaged } from "../rules/engagement";
 import { provisionalFormationFamily } from "../rules/splitting";
 import { rangedAttackPreview } from "../rules/rangedCombat";
@@ -17,7 +17,7 @@ export interface AiCommandStep {
   confirmed: boolean;
 }
 
-export type AiIntent = "battle" | "press" | "shoot" | "charge" | "advance" | "brace" | "hold";
+export type AiIntent = "battle" | "press" | "turn" | "shoot" | "charge" | "advance" | "brace" | "hold";
 
 export interface AiActivationPlan {
   factionId: FactionId;
@@ -177,7 +177,35 @@ function engagedOrder(state: GameState, formation: Formation): "battle" | "press
   return formation.cohesion > BALANCE.breakingMoraleThreshold && canForceRetreat ? "press" : "battle";
 }
 
+/** A formation with nothing to its front spends its activation turning toward the most contacts. */
+function turnTowardFlankingContacts(state: GameState, formation: Formation): Direction | null {
+  const counts = new Map<Direction, number>();
+  for (const contact of engagedContacts(state, formation.id)) {
+    const attacker = state.blocks[contact.attackerId];
+    const defender = state.blocks[contact.defenderId];
+    const direction = attacker && defender ? directionBetween(attacker.position, defender.position) : null;
+    if (direction) counts.set(direction, (counts.get(direction) ?? 0) + 1);
+  }
+  if (counts.size === 0 || counts.has(formation.facing)) return null;
+  return CARDINAL_DIRECTIONS
+    .filter((direction) => counts.has(direction))
+    .sort((left, right) => counts.get(right)! - counts.get(left)!)[0] ?? null;
+}
+
 function planEngagedActivation(state: GameState, formation: Formation, steps: AiCommandStep[]): FormationPlan | null {
+  const turn = turnTowardFlankingContacts(state, formation);
+  if (turn) {
+    if (!appendPlannedOrder(state, steps, { type: "turn", facing: turn })) return null;
+    return {
+      factionId: formation.factionId,
+      formationId: formation.id,
+      formationName: formation.name,
+      intent: "turn",
+      summary: `${formation.name} turns to face its attackers.`,
+      steps,
+      priority: 50_000,
+    };
+  }
   const action = engagedOrder(state, formation);
   const contacts = engagedContacts(state, formation.id).length;
   if (!appendPlannedOrder(state, steps, { type: action })) return null;

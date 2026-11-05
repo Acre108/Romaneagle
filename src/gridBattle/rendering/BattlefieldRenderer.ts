@@ -37,14 +37,15 @@ import {
   type BlockSlotMask,
   type ContestedBlockSlotOccupancy,
 } from "../model/blockSlots";
-import { attackingPressure, chargePreview, defendingResistance, pressurePreview, rearSupport } from "../rules/combat";
-import { addPosition, directionBetween, directionVector, oppositeDirection } from "../rules/direction";
+import { attackingPressure, chargePreview, defendingResistance } from "../rules/combat";
+import { addPosition, directionVector, oppositeDirection } from "../rules/direction";
 import { legalReformDestinations } from "../rules/formationActions";
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
 import { legalMoveDirections, planFormationMove } from "../rules/movement";
 import { componentIndexForBlock } from "../rules/splitting";
 import { canSelectFormation } from "../rules/turnSystem";
-import { effectiveBlockFacing } from "../rules/blockFacing";
+import { blockFacing } from "../rules/blockFacing";
+import { formationPlates } from "../rules/formationPlates";
 import { isCavalry } from "../model/unitStats";
 import { rangedAttackPreview } from "../rules/rangedCombat";
 import { edgeFeatureDefinition } from "../model/edgeFeatureDefinitions";
@@ -131,6 +132,8 @@ const FORMATION_COLOURS: Record<string, number> = {
 };
 
 const BRACED_BORDER_COLOUR = 0x3b82f6;
+
+const PLATE_COLOURS = { steady: 0xa8dcae, shaken: 0xe8c56a, breaking: 0xf08a7a } as const;
 
 const MORALE_COLOURS = {
   steady: 0x4f8b57,
@@ -1470,16 +1473,6 @@ export class BattlefieldRenderer {
     this.movementPreviewLayer.addChild(g);
   }
 
-  private drawContactEdge(position: GridPosition, direction: Direction, colour: number): void {
-    const centre = this.projectTile(position);
-    const points = edgePoints(directionToDiamondEdge(direction), 22);
-    const g = new Graphics()
-      .moveTo(centre.x + points[0], centre.y + points[1])
-      .lineTo(centre.x + points[2], centre.y + points[3])
-      .stroke({ width: 6, color: colour, alpha: 0.95 });
-    this.movementPreviewLayer.addChild(g);
-  }
-
   private drawRangedParticipationPips(position: GridPosition, count: number): void {
     const centre = this.projectTile(position);
     const graphics = new Graphics();
@@ -1537,24 +1530,7 @@ export class BattlefieldRenderer {
       const attacker = state.blocks[attackerId];
       if (!attacker) continue;
       for (const defender of Object.values(state.blocks)) {
-        if (state.currentAction === "attack") {
-          const preview = pressurePreview(state, attackerId, defender.id);
-          if (!preview) continue;
-          this.drawPreviewCell(attacker.position, 0xdca85d, 0.14);
-          this.drawPreviewCell(defender.position, 0xdb765d, 0.38);
-          this.drawArrow(attacker.position, defender.position, 0xf0a568);
-          const attackerFacing = effectiveBlockFacing(state, attacker.id);
-          this.drawContactEdge(attacker.position, attackerFacing, 0xffd271);
-          const contactDirection = directionBetween(defender.position, attacker.position);
-          if (contactDirection) this.drawContactEdge(defender.position, contactDirection, 0xff7865);
-          for (const destination of preview.retreatDestinations) {
-            this.drawPreviewCell(destination, preview.retreatMode === "chaotic" ? 0xd493c7 : 0xb9a7e8, 0.24);
-          }
-          const rear = directionVector(oppositeDirection(attackerFacing));
-          for (let index = 1; index <= rearSupport(state, attacker.id); index += 1) {
-            this.drawPreviewCell(addPosition(attacker.position, rear, index), 0xe2cf77, 0.1);
-          }
-        } else if (state.currentAction === "charge") {
+        if (state.currentAction === "charge") {
           const preview = chargePreview(state, attackerId, defender.id);
           if (!preview) continue;
           const vector = directionVector(formation.facing);
@@ -1895,7 +1871,7 @@ export class BattlefieldRenderer {
   private drawFormationBorders(container: Container, state: GameState, block: TroopBlock): void {
     const formation = block.formationId ? state.formations[block.formationId] : undefined;
     if (!formation || block.isContested) return;
-    const facing = effectiveBlockFacing(state, block.id);
+    const facing = blockFacing(state, block.id);
     const g = new Graphics();
     if (formationIsEngaged(state, formation.id)) {
       g.poly(DIAMOND_POINTS, true).stroke({ width: 2.5, color: 0xf08a4b, alpha: 0.72 });
@@ -1927,7 +1903,7 @@ export class BattlefieldRenderer {
   private drawFormationIndicator(state: GameState, block: TroopBlock, selected: boolean): void {
     const formation = block.formationId ? state.formations[block.formationId] : undefined;
     if (!formation || block.isContested || !selected) return;
-    const facing = effectiveBlockFacing(state, block.id);
+    const facing = blockFacing(state, block.id);
     const edge = edgePoints(directionToDiamondEdge(facing));
     const midX = (edge[0] + edge[2]) / 2;
     const midY = (edge[1] + edge[3]) / 2;
@@ -2027,6 +2003,27 @@ export class BattlefieldRenderer {
       }
       this.characterLayer.addChild(group);
       this.registerCharacterVisual(character.id, group, host.position);
+    }
+  }
+
+  /** Name, morale, and men left for every formation on both sides, always on. */
+  private renderFormationPlates(state: GameState): void {
+    for (const plate of formationPlates(state)) {
+      const position = this.surfacePoint(plate.position, { x: 0, y: -BLOCK_PLATFORM_HEIGHT - 34 });
+      const text = new Text({
+        text: plate.text,
+        style: { fontFamily: "Arial", fontSize: 18, fontWeight: "700", fill: PLATE_COLOURS[plate.tone] },
+      });
+      text.anchor.set(0.5);
+      const background = new Graphics()
+        .roundRect(-text.width / 2 - 5, -text.height / 2 - 2, text.width + 10, text.height + 4, 3)
+        .fill({ color: 0x14130f, alpha: 0.82 });
+      const group = new Container({ label: `plate-${plate.key}` });
+      group.position.set(position.x, position.y);
+      group.eventMode = "none";
+      group.zIndex = calculateIsoDepth(plate.position.x, plate.position.y, ISO_DEPTH_PRIORITY.floatingLabel);
+      group.addChild(background, text);
+      this.characterLayer.addChild(group);
     }
   }
 
@@ -2170,6 +2167,7 @@ export class BattlefieldRenderer {
     this.renderCasualtyBodies();
     this.renderActivationPulses(state);
     this.renderCharacters(state);
+    this.renderFormationPlates(state);
     this.renderCasualtySkulls();
     this.renderOrderConfirmationPreview(orderPreview);
     this.animateMovedBlocks(state);

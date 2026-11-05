@@ -21,7 +21,7 @@ import { damageBlock, withMoraleOrder } from "./combat";
 import { combatForecast } from "./combatPreview";
 import { directionVector, formationEdgeType } from "./direction";
 import { formationIsEngaged } from "./engagement";
-import { effectiveBlockFacing } from "./blockFacing";
+import { blockFacing } from "./blockFacing";
 
 const GRID_WORLD_UNITS = 60;
 
@@ -275,7 +275,7 @@ export function rangedAttackPreview(
   const strengthMultiplier = firingModelCount / Math.max(1, formation.initialModelCount);
   const formationMultiplier = formation.formationMode === "open" ? 1 : 0.76;
   const edges = pairs.map(({ source, target: impactTarget }) => formationEdgeType(
-    effectiveBlockFacing(state, impactTarget.id),
+    blockFacing(state, impactTarget.id),
     incomingDirection(source.position, impactTarget.position),
   ));
   const edge = edges.every((candidate) => candidate === edges[0]) ? edges[0]! : "mixed";

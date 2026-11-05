@@ -44,7 +44,6 @@ export function reformBlock(state: GameState, blockId: string, destination: Grid
   const formation = state.formations[block.formationId!]!;
   const overflow = planTerrainOverflow(state, [{ block, origin: { ...block.position }, destination }]) ?? [];
   clearFormationBrace(state, formation.id);
-  block.engagementFacing = undefined;
   block.position = { ...destination };
   const overflowIds = applyTerrainOverflow(state, overflow);
   formation.hasActivated = true;
@@ -122,7 +121,6 @@ export function mergeFormations(state: GameState, firstId: string, secondId: str
   keeper.leaderCharacterId ||= absorbed.leaderCharacterId;
   for (const blockId of keeper.blockIds) {
     state.blocks[blockId]!.formationId = keeper.id;
-    state.blocks[blockId]!.engagementFacing = undefined;
   }
   delete state.formations[absorbed.id];
   emitEvent(state, "formation_merged", `${absorbed.name} merged into ${keeper.name}.`, {

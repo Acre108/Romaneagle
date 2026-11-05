@@ -205,7 +205,7 @@ describe("grid ranged combat", () => {
     expect(rangedAttackPreview(engaged.state, engaged.archers.id, engaged.target.id)).toBeNull();
     expect(commandLegality(engaged.state, "shoot")).toEqual({
       accepted: false,
-      reason: "Engaged formations must Fall back, Battle, or Press.",
+      reason: "Engaged formations must Fall back, Turn, Battle, or Press.",
     });
   });
 

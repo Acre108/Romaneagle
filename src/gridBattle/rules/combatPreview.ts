@@ -70,6 +70,24 @@ const RESULT_LABELS: readonly [PressureResult, string][] = [
   ["scattered", "Scattered"], ["pushed", "Pushed"], ["wavers", "Wavers"], ["holds", "Holds"],
 ];
 
+const RESULT_WORDS: Readonly<Record<PressureResult, string>> = { scattered: "Scattered", pushed: "Pushed", wavers: "Wavers", holds: "Holds" };
+
+/** Groups contacts with matching odds, e.g. `3 contacts from the front: pressure 10 vs 8 \u00b7 Pushed \u00b7 1 damage each`. */
+export function contactSummaryLines(previews: readonly PressurePreview[]): string[] {
+  const groups = new Map<string, { preview: PressurePreview; count: number }>();
+  for (const preview of previews) {
+    const key = [preview.attackingPressure, preview.defendingResistance, preview.result, preview.contactEdge, preview.expectedDamage].join("|");
+    const group = groups.get(key);
+    if (group) group.count += 1;
+    else groups.set(key, { preview, count: 1 });
+  }
+  return [...groups.values()].map(({ preview, count }) => [
+    `${count} contact${count === 1 ? "" : "s"} from the ${preview.contactEdge}: pressure ${preview.attackingPressure} vs ${preview.defendingResistance}`,
+    RESULT_WORDS[preview.result],
+    `${preview.expectedDamage} damage${count === 1 ? "" : " each"}`,
+  ].join(" \u00b7 "));
+}
+
 interface FamilyMorale {
   morale: number;
   routed: boolean;

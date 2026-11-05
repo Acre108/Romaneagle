@@ -1,9 +1,9 @@
 import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import type { BattleAction, Direction, GameState, GridPosition } from "../model/types";
-import { chargePreview, clearOrphanedContestedFlags, createContestedCell, damageBlock, pressurePreview, resolveCharge, resolveContestedMelees, resolveDuels, resolvePressure, retreatBlock } from "../rules/combat";
+import { chargePreview, clearOrphanedContestedFlags, createContestedCell, damageBlock, resolveCharge, resolveContestedMelees, resolveDuels, retreatBlock } from "../rules/combat";
 import { forceSplit, legalReformDestinations, mergeCandidates, mergeFormations, reformBlock, transferCharacter } from "../rules/formationActions";
-import { canTranslateFormation, finishFormationMove, translateFormation } from "../rules/movement";
+import { canTranslateFormation, finishFormationMove, translateFormation, turnFormation } from "../rules/movement";
 import { canFallBack, engagedContacts, fallBackFormation, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";
 import { oppositeDirection } from "../rules/direction";
 import { provisionalFormationFamily, recalculateAllConnectivity } from "../rules/splitting";
@@ -18,7 +18,7 @@ export type GameCommand =
   | { type: "choose_action"; action: BattleAction }
   | { type: "move"; direction: Direction }
   | { type: "finish_move"; facing: Direction }
-  | { type: "attack"; attackerId: string; defenderId: string; followUp?: boolean }
+  | { type: "turn"; facing: Direction }
   | { type: "shoot"; defenderId: string }
   | { type: "charge"; attackerId: string; defenderId: string }
   | { type: "reform"; blockId: string; destination: GridPosition }
@@ -133,12 +133,12 @@ function executeCommandCore(
       endFormationActivation(state, formation.id);
       return { accepted: true };
     }
-    case "attack": {
-      if (!formation || !formation.blockIds.includes(command.attackerId)) return { accepted: false, reason: "Select the attacking formation." };
-      if (formationFamilyIsRouted(state, formation.id)) return routedOrderReason();
-      if (!options.confirmed) return { accepted: false, reason: "Combat orders must be previewed and confirmed." };
-      const result = resolvePressure(state, command.attackerId, command.defenderId, { followUp: command.followUp });
-      if (!result.ok) return { accepted: false, reason: "Attack must use a front block against the square directly ahead." };
+    case "turn": {
+      if (!formation) return { accepted: false, reason: "Select an engaged formation first." };
+      const legality = commandLegality(state, "turn");
+      if (!legality.accepted) return legality;
+      if (command.facing === formation.facing) return { accepted: false, reason: "The formation already faces that way." };
+      for (const member of provisionalFormationFamily(state, formation.id)) turnFormation(state, member.id, command.facing);
       endFormationActivation(state, formation.id);
       return { accepted: true };
     }
@@ -296,10 +296,10 @@ export function commandLegality(state: GameState, action: BattleAction): Command
   const blocks = formation.blockIds.map((id) => state.blocks[id]).filter((block) => block !== undefined);
   const engaged = formationIsEngaged(state, formation.id);
   const routed = formationFamilyIsRouted(state, formation.id);
-  const engagedAction = action === "fall_back" || action === "battle" || action === "press";
+  const engagedAction = action === "fall_back" || action === "turn" || action === "battle" || action === "press";
   if (routed && engaged && action !== "fall_back") return routedOrderReason();
   if (routed && !engaged && action !== "move") return routedOrderReason();
-  if (engaged && !engagedAction) return { accepted: false, reason: "Engaged formations must Fall back, Battle, or Press." };
+  if (engaged && !engagedAction) return { accepted: false, reason: "Engaged formations must Fall back, Turn, Battle, or Press." };
   if (!engaged && engagedAction) return { accepted: false, reason: "That order is only available while engaged." };
   if (action === "fall_back") {
     const legality = canFallBack(state, formation.id);
@@ -339,9 +339,6 @@ export function commandLegality(state: GameState, action: BattleAction): Command
     if (legalReformDestinations(state, state.selectedBlockId).length === 0 && !characterTransfer) {
       return { accepted: false, reason: "The selected block has no legal reform or character-transfer destination." };
     }
-  }
-  if (action === "attack" && !blocks.some((block) => enemies.some((enemy) => pressurePreview(state, block.id, enemy.id)))) {
-    return { accepted: false, reason: "No front block is touching an enemy directly ahead." };
   }
   if (action === "merge" && mergeCandidates(state, formation.id).length === 0) {
     return { accepted: false, reason: "No connected compatible formation can merge." };

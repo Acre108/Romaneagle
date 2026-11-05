@@ -83,6 +83,8 @@ export interface OrderConfirmationPreview {
   damage: CombatBlockDamagePreview[];
   /** One plain line per formation whose morale or position the order changes. */
   forecast?: string[];
+  /** Contacts grouped by matching odds, so the numbers read at a glance. */
+  contactSummary?: string[];
 }
 
 export interface TroopBlock {
@@ -97,7 +99,6 @@ export interface TroopBlock {
   characterId: string | null;
   hasRetreatedThisRound: boolean;
   isContested: boolean;
-  engagementFacing?: Direction;
   chargeDistance: number;
   chargeMomentum: number;
 }
@@ -172,7 +173,6 @@ export interface BuildingCell {
 
 export type BattleAction =
   | "move"
-  | "attack"
   | "shoot"
   | "charge"
   | "reform"
@@ -180,6 +180,7 @@ export type BattleAction =
   | "brace"
   | "hold"
   | "fall_back"
+  | "turn"
   | "battle"
   | "press";
 

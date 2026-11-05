@@ -401,7 +401,6 @@
               <div class="eyebrow">FORMATION ACTIONS</div>
               <div id="grid-actions" class="grid-actions">
                 <button data-grid-action="move" data-action-mode="normal" title="Translate one cardinal grid step (M)">Move <kbd>M</kbd></button>
-                <button data-grid-action="attack" data-action-mode="normal" title="Apply local pressure through a front edge (A)">Attack <kbd>A</kbd></button>
                 <button data-grid-action="shoot" data-action-mode="normal" title="Loose one coordinated ranged volley (S)">Shoot <kbd>S</kbd></button>
                 <button data-grid-action="charge" data-action-mode="normal" title="Charge an enemy directly ahead (C)">Charge <kbd>C</kbd></button>
                 <button data-grid-action="reform" data-action-mode="normal" title="Move the selected block to a legal adjacent square (R)">Reform <kbd>R</kbd></button>
@@ -409,12 +408,13 @@
                 <button data-grid-action="brace" data-action-mode="normal" title="Lock close-order infantry in place for +1 armour until it moves (X)">Brace <kbd>X</kbd></button>
                 <button data-grid-action="hold" data-action-mode="normal" title="Recover one morale and end activation (H)">Hold <kbd>H</kbd></button>
                 <button data-grid-action="fall_back" data-action-mode="engaged" title="Reverse the formation one square and disengage (V)">Fall back <kbd>V</kbd></button>
+                <button data-grid-action="turn" data-action-mode="engaged" title="Face a new direction; uses the whole activation (T)">Turn <kbd>T</kbd></button>
                 <button data-grid-action="battle" data-action-mode="engaged" title="Fight at full damage; shoves only on a clear win, net pressure 4 or more (B)">Battle <kbd>B</kbd></button>
                 <button data-grid-action="press" data-action-mode="engaged" title="+2 pressure, -1 damage; shoves at net pressure 2 or more and takes the ground (P)">Press <kbd>P</kbd></button>
                 <button data-grid-action="end" data-action-mode="both" title="End this formation activation (Space)">End activation <kbd>Space</kbd></button>
               </div>
               <div id="grid-move-facing" class="grid-move-facing" hidden>
-                <span>Finish move facing</span>
+                <span id="grid-move-facing-label">Finish move facing</span>
                 <div>
                   <button data-grid-facing="north" title="Finish facing north">↑ N</button>
                   <button data-grid-facing="west" title="Finish facing west">← W</button>
@@ -455,7 +455,7 @@
         </main>
 
         <footer class="grid-command-help panel">
-          Click block: formation · wheel zoom · middle-drag / Space+drag pan · F frame · Home camera reset · M move · choose facing to finish · A attack · S shoot · C charge · R reform · G merge · X brace · H hold · Space tap end · D debug
+          Click block: formation · wheel zoom · middle-drag / Space+drag pan · F frame · Home camera reset · M move · choose facing to finish · S shoot · C charge · R reform · G merge · X brace · H hold · In contact: V fall back, T turn, B battle, P press · Space tap end · D debug
         </footer>
       </div>
       <section id="battle-result" class="battle-result panel" hidden>

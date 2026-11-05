@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { executeCommand } from "../gridBattle/commands/executeCommand";
 import { planOrder } from "../gridBattle/commands/planOrder";
+import { planAiActivation } from "../gridBattle/ai/formationAi";
+import { formationPlates } from "../gridBattle/rules/formationPlates";
 import { hitPointsPerModel } from "../gridBattle/model/unitStats";
 import { attackingPressure, pressurePreview, retreatBlock } from "../gridBattle/rules/combat";
 import { resolveEngagedOrder } from "../gridBattle/rules/engagement";
@@ -32,7 +35,7 @@ const GREAT_WARBAND: Profile = {
   unitType: "heavy_infantry", formationMode: "closed", attack: 3, armour: 0, morale: 8, modelsPerBlock: 9, shield: true, width: 5, depth: 3,
 };
 const LOOSE_WARBAND: Profile = {
-  unitType: "light_infantry", formationMode: "open", attack: 2, armour: 0, morale: 6, modelsPerBlock: 5, shield: false, width: 4, depth: 3,
+  unitType: "light_infantry", formationMode: "open", attack: 2, armour: 0, morale: 7, modelsPerBlock: 5, shield: false, width: 4, depth: 3,
 };
 
 type Angle = "front" | "side" | "rear";
@@ -154,7 +157,7 @@ describe("what an order pays by angle of attack", () => {
     ["front", "battle", 1, "contact_lost"],
     ["side", "battle", 1, "contact_lost"],
     ["rear", "battle", 1, "contact_lost"],
-    ["front", "press", 2, "routed"],
+    ["front", "press", 3, "routed"],
     ["side", "press", 2, "routed"],
     ["rear", "press", 2, "routed"],
   ] as const)("Loose Warband struck from the %s by %s", (angle, order, orders, outcome) => {
@@ -330,6 +333,30 @@ describe("the order confirmation says what will happen", () => {
   });
 });
 
+describe("every formation shows its state on the board", () => {
+  it("labels both sides with morale and men left", () => {
+    const state = matchup(PRIMA, GREAT_WARBAND, "front");
+    expect(formationPlates(state).map((plate) => plate.text)).toEqual(["attacker  ♥9  81", "defender  ♥8  135"]);
+  });
+
+  it("colours a plate by morale and says when a formation is routing", () => {
+    const state = matchup(PRIMA, GREAT_WARBAND, "front");
+    state.formations.defender!.cohesion = 5;
+    state.formations.attacker!.cohesion = 0;
+    state.formations.attacker!.status = "routed";
+    const [attacker, defender] = formationPlates(state);
+    expect(attacker).toMatchObject({ tone: "breaking", text: "attacker  ROUTING  81" });
+    expect(defender?.tone).toBe("shaken");
+  });
+
+  it("gives a split formation one plate", () => {
+    const state = matchup(PRIMA, GREAT_WARBAND, "front");
+    state.formations["defender-fragment-1"] = { ...state.formations.defender!, id: "defender-fragment-1", blockIds: ["defender-b1"] };
+    state.formations.defender!.blockIds = state.formations.defender!.blockIds.filter((id) => id !== "defender-b1");
+    expect(formationPlates(state).filter((plate) => plate.key === "defender")).toHaveLength(1);
+  });
+});
+
 describe("how much one point or a free turn changes", () => {
   it("does not let an attacker's own morale decide whether its front can shove", () => {
     for (const width of [1, 2, 3]) {
@@ -357,14 +384,41 @@ describe("how much one point or a free turn changes", () => {
     expect(Object.values(state.blocks).filter((block) => block.formationId === "defender" && block.wavering)).toEqual([]);
   });
 
-  it("lets a flanked formation turn its blocks for free before it fights", () => {
+  it("gives a flanked formation no free turn when it fights", () => {
     const state = matchup(PRIMA, GREAT_WARBAND, "side");
-    const before = state.blocks["defender-b5"]!;
-    expect(before.engagementFacing).toBeUndefined();
+    const contact = () => pressurePreview(state, "attacker-b1", "defender-b5", { allowAnyContact: true })!.contactEdge;
+    expect(contact()).toBe("side");
     resolveEngagedOrder(state, "defender", "battle");
-    expect(Object.values(state.blocks)
-      .filter((block) => block.factionId === "saxon" && block.position.x === 16)
-      .every((block) => block.engagementFacing === "east")).toBe(true);
     expect(state.formations.defender!.facing).toBe("south");
+    expect(contact()).toBe("side");
+  });
+
+  it("makes turning in contact cost the whole activation", () => {
+    const state = matchup(PRIMA, GREAT_WARBAND, "side");
+    state.activeFactionId = "saxon";
+    state.selectedFormationId = "defender";
+    expect(executeCommand(state, { type: "turn", facing: "south" })).toEqual({
+      accepted: false, reason: "The formation already faces that way.",
+    });
+    expect(executeCommand(state, { type: "turn", facing: "east" }).accepted).toBe(true);
+    expect(state.formations.defender).toMatchObject({ facing: "east", hasActivated: true });
+    const contact = pressurePreview(state, "attacker-b1", "defender-b5", { allowAnyContact: true })!;
+    expect(contact.contactEdge).toBe("front");
+  });
+
+  it("refuses a turn to a formation that is not in contact", () => {
+    const state = blankState(12, 12);
+    addFormation(state, "free", [{ x: 2, y: 2 }], "north", "roman");
+    addFormation(state, "enemy", [{ x: 9, y: 9 }], "north", "saxon");
+    state.selectedFormationId = "free";
+    expect(executeCommand(state, { type: "turn", facing: "east" }).accepted).toBe(false);
+  });
+
+  it("has the computer turn a formation with nothing to its front", () => {
+    const state = matchup(PRIMA, GREAT_WARBAND, "side");
+    state.activeFactionId = "saxon";
+    const plan = planAiActivation(state, "saxon");
+    expect(plan?.intent).toBe("turn");
+    expect(plan?.steps.at(-1)?.command).toEqual({ type: "turn", facing: "east" });
   });
 });

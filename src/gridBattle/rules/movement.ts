@@ -18,7 +18,6 @@ import {
   oppositeDirection,
 } from "./direction";
 import { provisionalFormationFamily, recalculateFormationConnectivity } from "./splitting";
-import { clearFormationEngagementFacings } from "./blockFacing";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
 import { clearFormationBrace } from "./brace";
 
@@ -292,7 +291,6 @@ export function translateFormation(
   if (planned.plan.reordered && !confirmed) return { ok: false, reason: "This formation-changing move must be previewed and confirmed." };
   const formation = state.formations[formationId]!;
   const family = planned.plan.formationIds.map((id) => state.formations[id]!).filter((candidate) => candidate !== undefined);
-  for (const candidate of family) clearFormationEngagementFacings(state, candidate.id);
   const overflow = terrainOverflowForPlan(state, planned.plan.relocations) ?? [];
   for (const candidate of family) {
     clearFormationBrace(state, candidate.id);
@@ -385,7 +383,6 @@ export function finishFormationMove(
   if (!formation) return { ok: false, reason: "Formation no longer exists." };
   if (formation.hasActivated) return { ok: false, reason: "Formation has already activated." };
   const previousFacing = formation.facing;
-  clearFormationEngagementFacings(state, formation.id);
   formation.facing = facing;
   moveCharactersToFormationFront(state, formation);
   if (previousFacing !== facing) {
@@ -394,6 +391,18 @@ export function finishFormationMove(
     });
   }
   return { ok: true };
+}
+
+/** Turns a formation in place without moving it. In contact this is a whole activation's work. */
+export function turnFormation(state: GameState, formationId: string, facing: Direction): void {
+  const formation = state.formations[formationId];
+  if (!formation || formation.facing === facing) return;
+  clearFormationBrace(state, formation.id);
+  formation.facing = facing;
+  moveCharactersToFormationFront(state, formation);
+  emitEvent(state, "formation_rotated", `${formation.name} turned to face ${facing}.`, {
+    blockIds: [...formation.blockIds], formationIds: [formation.id], position: rotationPivot(state, formation),
+  });
 }
 
 export function legalMoveDirections(state: GameState, formationId: string): Direction[] {

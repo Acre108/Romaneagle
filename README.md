@@ -51,7 +51,6 @@ Every mission uses the established briefing, tactical map, deployment, companion
 | Click the minimap | Re-centre the isometric camera |
 | Right-click / Escape | Cancel the current action |
 | `M` | Move, then choose a final facing |
-| `A` | Attack with local pressure |
 | `S` | Shoot one coordinated ranged volley |
 | `C` | Charge with infantry or cavalry |
 | `R` | Reform the selected block or transfer its character |
@@ -59,6 +58,7 @@ Every mission uses the established briefing, tactical map, deployment, companion
 | `X` | Brace close-order infantry for +1 armour until it moves |
 | `H` | Hold and recover one morale |
 | `V` | Fall back one square while engaged |
+| `T` | Turn to a new facing while engaged; uses the whole activation |
 | `B` | Battle while engaged |
 | `P` | Press with extra pressure and occupy vacated gaps |
 | Tap `Space` | End the selected formation’s activation |
@@ -159,7 +159,7 @@ Morale losses are charged per order, not per file, so frontage cannot multiply t
 
 Hold recovers 1 morale. At 3 or below a formation is breaking; at 0 it routs. Routers run automatically, pour through friendly blocks (which swap places with them and waver), and rally if they get clear, but enemies or impassable ground can trap them until they disperse. A routed formation counts as broken for objectives until it rallies.
 
-Every player order first passes through one non-mutating planner. Simple orders execute immediately, while Attack, Charge, Battle, Press, and formation-changing movement pause on the same board confirmation. The combat preview shows both totals, net pressure, expected damage or retreat quality, retreat destinations, possible cascade, compression risk, and local character modifiers. `!` marks fixed destinations and `?` marks positions that depend on combat resolution.
+Every player order first passes through one non-mutating planner. Simple orders execute immediately, while Charge, Shoot, Battle, Press, and formation-changing movement pause on the same board confirmation. The combat preview shows both totals, net pressure, expected damage or retreat quality, retreat destinations, possible cascade, compression risk, and local character modifiers. `!` marks fixed destinations and `?` marks positions that depend on combat resolution.
 
 Every melee contact also resolves a small deterministic casualty check. Pressure decides whether the defender holds or retreats; damage decides how many soldiers die:
 
@@ -195,7 +195,7 @@ A formation is engaged whenever one of its blocks is orthogonally adjacent to an
 
 Battle and Press preview every participating contact together before they resolve. The overlay includes both factions: possible holds, retreats, removals, formation refills, and Press file advances are marked with `?`.
 
-When a formation chooses **Battle** or **Press**, every participating block adopts a local engagement facing toward its nearest enemy. This lets an enveloping formation turn its front edges inward around the target; local facing also governs rear support, frontal shield Armour, brace-against-charge equipment, and flank or rear damage. Moving, choosing a finish facing, reforming, retreating, merging, or charging clears those local facings and restores the formation's shared facing.
+Blocks always face where their formation faces, so fighting does not turn anyone. A flanked formation stays flanked until it spends an activation on **Turn**, which pivots the whole formation in place. Every block can still strike any adjacent enemy, but a block hit from the side or rear keeps taking the penalties for that edge.
 
 When an engaged formation is selected for a new activation, one deterministic unit-level pass lets its blocks move one square toward nearby enemies where that closes an open fighting-line gap without worsening formation connectivity. This is formation adjustment, not individual soldier pathfinding.
 
@@ -271,9 +271,7 @@ Press `D` to display block IDs, grid/projected coordinates, depth keys, formatio
 ## Known edge cases
 
 - Deliberately left out of the morale and strength rules until they are playtested: scaling melee damage by a block's remaining models and making volleys cause wavering instead of relying on casualties.
-- Blocks still turn to face their nearest enemy for free on Battle or Press, which removes the resistance and damage penalty of being flanked on the next contact, though not the morale shock.
 - The TEST SCENARIO keeps the original demonstration map and its three Saxon formations, and deploys the Roman formations chosen for it. Its ballistarii fight as light infantry with their ranged weapon, because the grid battle has no separate artillery rules yet.
-- Attack follow-up is automatic after an overwhelming retreat and is shown in the on-board `?` outcome preview before confirmation.
 - Charge continuation models a straight breakthrough, but offers no optional mid-charge stop prompt yet.
 - Reform moves one block one square; it does not preview a complete reconstructed formation shape.
 - Split feedback uses a short text/edge flash rather than a persistent history view of the severed connection.

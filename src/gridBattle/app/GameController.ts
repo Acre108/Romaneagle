@@ -3,22 +3,21 @@ import { planOrder } from "../commands/planOrder";
 import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import { BALANCE } from "../model/config";
-import type { BattleAction, Direction, FactionId, Formation, GameState, GridPosition, OrderConfirmationPreview, PressurePreview, TroopBlock } from "../model/types";
-import { attackingPressure, chargePreview, defendingResistance, pressurePreview, rearSupport } from "../rules/combat";
-import { pressureCalculationLines } from "../rules/combatPreview";
+import type { BattleAction, Direction, FactionId, Formation, GameState, GridPosition, OrderConfirmationPreview, TroopBlock } from "../model/types";
+import { attackingPressure, chargeConfirmationPreview, chargePreview, defendingResistance, rearSupport } from "../rules/combat";
 import { mergeCandidates } from "../rules/formationActions";
 import { moveDirectionFromCell } from "../rules/movement";
 import { connectedComponents, provisionalFormationFamily } from "../rules/splitting";
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
 import { formationFamilyIsRouted } from "../rules/routing";
 import { remainingActivations } from "../rules/turnSystem";
-import { effectiveBlockFacing } from "../rules/blockFacing";
+import { blockFacing } from "../rules/blockFacing";
 import { createPrototypeGridScenario } from "../scenario/prototypeScenario";
 import type { GridBattleScenarioFactory } from "../scenario/campaignScenario";
 import { BattlefieldRenderer } from "../rendering/BattlefieldRenderer";
 import type { AnimationSpeed } from "../rendering/AnimationQueue";
 import { blockHitPoints, hasEquipment, isCavalry } from "../model/unitStats";
-import { rangedAttackPreview, type RangedAttackPreview } from "../rules/rangedCombat";
+import { rangedAttackPreview, rangedConfirmationPreview, type RangedAttackPreview } from "../rules/rangedCombat";
 import { getRangedWeaponProfile } from "../../units/RangedWeapons";
 import { planAiActivation, type AiActivationPlan } from "../ai/formationAi";
 import type { MissionObjectiveDefinition, ObjectiveOutcome } from "../rules/campaignObjectives";
@@ -236,17 +235,8 @@ export class GridBattleController {
       else requiredElement("grid-action-help").textContent = "Click a highlighted adjacent footprint.";
       return;
     }
-    if (formation && action === "attack" && enemy) {
-      const attacker = this.attackSourceFor(enemy.id, false);
-      if (!attacker) {
-        requiredElement("grid-action-help").textContent = "No front block contacts that enemy.";
-        return;
-      }
-      this.planAndDispatch({ type: "attack", attackerId: attacker.id, defenderId: enemy.id });
-      return;
-    }
     if (formation && action === "charge" && enemy) {
-      const attacker = this.attackSourceFor(enemy.id, true);
+      const attacker = this.chargeSourceFor(enemy.id);
       if (attacker) this.planAndDispatch({ type: "charge", attackerId: attacker.id, defenderId: enemy.id });
       else requiredElement("grid-action-help").textContent = "No block has a legal forward charge lane to that target.";
       return;
@@ -293,14 +283,14 @@ export class GridBattleController {
     this.renderAll();
   }
 
-  private attackSourceFor(defenderId: string, charge: boolean): TroopBlock | undefined {
+  private chargeSourceFor(defenderId: string): TroopBlock | undefined {
     const formation = this.selectedFormation();
     if (!formation) return undefined;
     const preferred = this.selectedBlock();
-    if (preferred && (charge ? chargePreview(this.state, preferred.id, defenderId) : pressurePreview(this.state, preferred.id, defenderId))) return preferred;
+    if (preferred && chargePreview(this.state, preferred.id, defenderId)) return preferred;
     return formation.blockIds
       .map((id) => this.state.blocks[id])
-      .find((block) => block && (charge ? chargePreview(this.state, block.id, defenderId) : pressurePreview(this.state, block.id, defenderId)));
+      .find((block) => block && chargePreview(this.state, block.id, defenderId));
   }
 
   private handleCellHover(position: GridPosition | null): void {
@@ -311,80 +301,53 @@ export class GridBattleController {
     }
     hover.textContent = `${String.fromCharCode(65 + position.x)}${position.y + 1} · ${this.renderer.terrainDescription(position)}`;
     const formation = this.selectedFormation();
-    if (!formation || (this.state.currentAction !== "attack" && this.state.currentAction !== "charge" && this.state.currentAction !== "shoot")) return;
+    if (!formation || (this.state.currentAction !== "charge" && this.state.currentAction !== "shoot")) return;
     const enemy = blocksAt(this.state, position).find((block) => block.factionId !== formation.factionId);
-    if (!enemy) return;
     if (this.state.currentAction === "shoot") {
-      this.renderRangedPreview(rangedAttackPreview(this.state, formation.id, enemy.id));
+      const preview = enemy ? rangedAttackPreview(this.state, formation.id, enemy.id) : null;
+      this.renderRangedPreview(preview, enemy && preview ? rangedConfirmationPreview(this.state, formation.id, enemy.id)?.forecast ?? [] : []);
       return;
     }
-    const attacker = this.attackSourceFor(enemy.id, this.state.currentAction === "charge");
-    if (!attacker) return;
-    if (this.state.currentAction === "attack") this.renderCombatPreview(pressurePreview(this.state, attacker.id, enemy.id));
-    else {
-      const charge = chargePreview(this.state, attacker.id, enemy.id);
-      requiredElement("grid-combat-preview").textContent = charge
-        ? isCavalry(charge.unitType)
-          ? `Charge lane ${charge.distance} squares · momentum ${charge.momentum} · impact ${charge.impactDamage}, then local pressure.`
-          : `Infantry charge ${charge.distance} ${charge.distance === 1 ? "square" : "squares"} · ${charge.bonusNullified ? "attack bonus nullified by braced front" : `+${charge.attackBonus} attack pressure`}.`
-        : "That target is not in a legal charge lane.";
-    }
+    const attacker = enemy ? this.chargeSourceFor(enemy.id) : undefined;
+    this.renderChargePreview(enemy && attacker ? attacker.id : null, enemy?.id ?? null);
   }
 
-  private renderCombatPreview(preview: PressurePreview | null): void {
-    const panel = requiredElement("grid-combat-preview");
-    if (!preview) {
-      panel.textContent = "Choose Attack, then hover or click a highlighted enemy block.";
+  private renderChargePreview(attackerId: string | null, defenderId: string | null): void {
+    const charge = attackerId && defenderId ? chargePreview(this.state, attackerId, defenderId) : null;
+    if (!charge || !attackerId || !defenderId) {
+      this.setPreviewLines(["Choose an enemy in the forward lane to see what the charge will do."]);
       return;
     }
-    panel.replaceChildren();
-    const lines = [
-      `Pressure ${preview.attackingPressure} vs resistance ${preview.defendingResistance}`,
-      `Damage range ${preview.minimumDamage}–${preview.maximumDamage} · ${preview.defence}% evade from defence`,
-      `On a hit: attack ${preview.rawDamage} vs ${preview.armour + preview.shieldArmour + preview.braceArmour} protection${preview.damagePenalty > 0 ? ` and ${preview.damagePenalty} order penalty` : ""}`,
-      `Seeded result this round: ${preview.expectedDamage} damage · ${preview.expectedCasualties} ${preview.expectedCasualties === 1 ? "model" : "models"} lost`,
-      `Net ${preview.netPressure}: ${preview.expectedResult}`,
-      preview.retreatHazard
-        ? preview.retreatHazard === "river_deep"
-          ? "Retreat enters deep water: affected blocks drown"
-          : "Retreat crosses a cliff of more than one level: affected blocks are destroyed"
-        : preview.result === "holds" || preview.result === "wavers"
-        ? "No retreat predicted"
-        : preview.retreatMode === "chaotic"
-        ? `Chaotic retreat: ${preview.retreatDestinations.map((position) => `${String.fromCharCode(65 + position.x)}${position.y + 1}`).join(", ")}`
-        : `Good-order retreat: ${String.fromCharCode(65 + preview.retreatDestination.x)}${preview.retreatDestination.y + 1}`,
-      preview.cascadeLength > 0 ? `Cascade may displace ${preview.cascadeLength} block(s)` : "No friendly retreat cascade predicted",
-      preview.mayCompress ? "Retreat is blocked: compression and contested melee possible" : "Retreat space is available",
-      ...preview.characterModifiers,
-    ];
-    for (const line of lines) {
+    const confirmation = chargeConfirmationPreview(this.state, attackerId, defenderId);
+    this.setPreviewLines([
+      ...(confirmation?.forecast ?? []),
+      isCavalry(charge.unitType)
+        ? `Charge lane ${charge.distance} squares · momentum ${charge.momentum} · impact ${charge.impactDamage}, then local pressure.`
+        : `Infantry charge ${charge.distance} ${charge.distance === 1 ? "square" : "squares"} · ${charge.bonusNullified ? "attack bonus nullified by braced front" : `+${charge.attackBonus} attack pressure`}.`,
+      ...(confirmation?.contactSummary ?? []),
+    ]);
+  }
+
+  private setPreviewLines(lines: readonly string[]): void {
+    requiredElement("grid-combat-preview").replaceChildren(...lines.map((line) => {
       const row = document.createElement("div");
       row.textContent = line;
-      panel.append(row);
-    }
-    const calculationLines = pressureCalculationLines(preview);
-    const addMathButton = (label: string, details: readonly string[]): void => {
-      const button = document.createElement("button");
-      const detail = document.createElement("div");
-      button.type = "button";
-      button.className = "grid-preview-math-button";
-      button.textContent = label;
-      button.setAttribute("aria-expanded", "false");
-      detail.className = "grid-preview-math-detail";
-      detail.hidden = true;
-      detail.textContent = details.join("\n");
-      button.addEventListener("click", () => {
-        detail.hidden = !detail.hidden;
-        button.setAttribute("aria-expanded", String(!detail.hidden));
-        button.textContent = detail.hidden ? label : "Hide math";
-      });
-      panel.append(button, detail);
-    };
-    addMathButton("Damage math", calculationLines.slice(3));
-    addMathButton("Position math", calculationLines.slice(0, 3));
+      return row;
+    }));
   }
 
-  private renderRangedPreview(preview: RangedAttackPreview | null): void {
+  /** Shows what a pending order will do. Charge and Shoot keep their hover readout until then. */
+  private renderOrderPreview(): void {
+    const preview = this.pendingOrder?.preview;
+    if (preview?.kind === "combat") {
+      this.setPreviewLines([...(preview.forecast ?? []), ...(preview.contactSummary ?? [])]);
+      return;
+    }
+    if (this.state.currentAction === "charge" || this.state.currentAction === "shoot") return;
+    this.setPreviewLines(["Choose Battle, Press, Charge, or Shoot to see what the order will do."]);
+  }
+
+  private renderRangedPreview(preview: RangedAttackPreview | null, forecast: readonly string[] = []): void {
     const panel = requiredElement("grid-combat-preview");
     if (!preview) {
       panel.textContent = "Choose Shoot, then hover or click a highlighted enemy block.";
@@ -395,6 +358,7 @@ export class GridBattleController {
       ? String(preview.distance)
       : `${preview.distance}–${preview.farthestDistance}`;
     const lines = [
+      ...forecast,
       `${preview.weaponLabel} · firing distance ${distanceLabel} squares (range ${preview.minimumRange}–${preview.maximumRange})`,
       `${preview.firingBlockCount}/${preview.totalBlockCount} blocks firing → ${preview.impactCount} target blocks hit`,
       `${preview.firingModelCount} participating models · ${preview.minimumDamage}–${preview.maximumDamage} damage range`,
@@ -447,7 +411,6 @@ export class GridBattleController {
     this.planAndDispatch({ type: "choose_action", action });
     const help: Record<BattleAction, string> = {
       move: "Click highlighted cardinal translations, then choose the final facing. Blocks pivot in place.",
-      attack: "Click a highlighted enemy block directly ahead of a front block.",
       shoot: "Click a highlighted enemy. Every block with range and line of sight strikes a separate block in that target formation; frontal shields block some lanes.",
       charge: "Click an enemy in the forward lane. Infantry charge 1–2 squares; difficult terrain limits them to 1.",
       reform: "Click a green destination, or an adjacent friendly block to transfer the selected character.",
@@ -455,11 +418,13 @@ export class GridBattleController {
       brace: "Brace in place for +1 armour. The bonus lasts until any block in the formation moves.",
       hold: "Hold position.",
       fall_back: "Reverse one square and leave contact if the rear is clear.",
-      battle: "Fight every contact. Pressure moves the enemy only if its formation loses morale; blocks closing a gap fight immediately.",
-      press: "Gain +2 pressure but inflict 1 fewer casualty per attack; steady files advance into space the enemy gives up.",
+      turn: "Choose a new facing. Turning in contact uses this formation's whole activation.",
+      battle: "Fight every contact at full damage. Shoves only on a clear win, net pressure 4 or more; blocks closing a gap fight immediately.",
+      press: "Gain +2 pressure but deal 1 less damage. Shoves at net pressure 2 or more; steady files advance into space the enemy gives up.",
     };
     requiredElement("grid-action-help").textContent = help[action];
     if (action === "shoot") this.renderRangedPreview(null);
+    if (action === "charge") this.renderChargePreview(null, null);
   }
 
   private toggleDebug(): void {
@@ -502,7 +467,9 @@ export class GridBattleController {
     }, options);
     requiredElement("grid-move-facing").addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-grid-facing]");
-      if (button && !this.inputLocked()) this.planAndDispatch({ type: "finish_move", facing: button.dataset.gridFacing as Direction });
+      if (!button || this.inputLocked()) return;
+      const facing = button.dataset.gridFacing as Direction;
+      this.planAndDispatch(this.state.currentAction === "turn" ? { type: "turn", facing } : { type: "finish_move", facing });
     }, options);
     requiredElement("grid-order-confirm-accept").addEventListener("click", () => this.confirmPendingOrder(), options);
     requiredElement("grid-order-confirm-cancel").addEventListener("click", () => this.cancelPendingOrder(), options);
@@ -538,8 +505,8 @@ export class GridBattleController {
     if (this.concluded || (event.target as HTMLElement).matches("input, select, textarea")) return;
     const key = event.key.toLowerCase();
     const shortcuts: Partial<Record<string, UiAction>> = {
-      m: "move", a: "attack", s: "shoot", c: "charge", r: "reform", g: "merge", x: "brace", h: "hold",
-      v: "fall_back", b: "battle", p: "press",
+      m: "move", s: "shoot", c: "charge", r: "reform", g: "merge", x: "brace", h: "hold",
+      v: "fall_back", t: "turn", b: "battle", p: "press",
     };
     if (event.code === "Space") { event.preventDefault(); return; }
     if (event.key === "Enter" && this.pendingOrder) { event.preventDefault(); this.confirmPendingOrder(); return; }
@@ -642,10 +609,10 @@ export class GridBattleController {
     stats.replaceChildren(...definitionRows([
       ["Models", `${block.models}/${block.modelCapacity}`],
       ["Hit points", formation ? blockHitPoints(formation, block) : 0],
-      ["Facing", effectiveBlockFacing(this.state, block.id)],
+      ["Facing", blockFacing(this.state, block.id)],
       ["Morale", blockIsWavering(this.state, block.id) ? "Wavering" : "Steady"],
       ["Pressure", attackingPressure(this.state, block.id)],
-      ["Resistance", defendingResistance(this.state, block.id, effectiveBlockFacing(this.state, block.id))],
+      ["Resistance", defendingResistance(this.state, block.id, blockFacing(this.state, block.id))],
       ["Shield", formation && hasEquipment(formation, "shield_front") ? "+1 frontal armour" : "None"],
       ["Equipment", formation?.unit.equipment.join(", ").replaceAll("_", " ") || "None"],
       ["Rear support", rearSupport(this.state, block.id)],
@@ -669,7 +636,9 @@ export class GridBattleController {
       button.classList.toggle("active", this.state.currentAction === action);
     });
     const facingPanel = requiredElement("grid-move-facing");
-    const choosingMoveFacing = Boolean(formation && this.state.currentAction === "move") && !this.isComputerTurn();
+    const turning = this.state.currentAction === "turn";
+    const choosingMoveFacing = Boolean(formation && (this.state.currentAction === "move" || turning)) && !this.isComputerTurn();
+    requiredElement("grid-move-facing-label").textContent = turning ? "Turn to face" : "Finish move facing";
     facingPanel.hidden = !choosingMoveFacing || Boolean(this.pendingOrder);
     facingPanel.querySelectorAll<HTMLButtonElement>("[data-grid-facing]").forEach((button) => {
       button.disabled = !choosingMoveFacing || formationFamilyIsRouted(this.state, formation!.id);
@@ -734,7 +703,7 @@ export class GridBattleController {
     this.renderActions();
     this.renderLog();
     this.renderObjective();
-    if (this.state.currentAction !== "attack" && this.state.currentAction !== "shoot") this.renderCombatPreview(null);
+    this.renderOrderPreview();
   }
 
   private renderAll(): void {

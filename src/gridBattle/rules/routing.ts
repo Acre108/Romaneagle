@@ -181,7 +181,6 @@ function moveRoutingStep(
   transferOrRemoveCharacters(state, leaving, survivors);
   for (const block of survivors) {
     block.position = addPosition(block.position, vector);
-    block.engagementFacing = undefined;
     block.isContested = false;
   }
   for (const block of leaving) {
@@ -192,7 +191,6 @@ function moveRoutingStep(
   for (const { block, destination } of displaced) {
     if (block.formationId) clearFormationBrace(state, block.formationId);
     block.position = { ...destination };
-    block.engagementFacing = undefined;
     block.wavering = true;
   }
   applyTerrainOverflow(state, overflow);

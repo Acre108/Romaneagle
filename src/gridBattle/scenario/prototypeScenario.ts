@@ -1,3 +1,4 @@
+import { createBattleState, createFormation, deployFormation, rectangularPositions } from "../model/battleStateFactory";
 import { BALANCE, GRID_COLUMNS, GRID_ROWS } from "../model/config";
 import {
   BATTLEFIELD_MAP_SCHEMA_VERSION,
@@ -16,15 +17,15 @@ import type {
   Direction,
   EquipmentAbility,
   FactionId,
-  Formation,
   FormationMode,
   GameState,
   GridPosition,
   UnitProfile,
   UnitType,
 } from "../model/types";
-import { hitPointsPerModel, isCavalry, modelCapacity } from "../model/unitStats";
-import { getRangedWeaponProfile, type RangedWeaponId } from "../../units/RangedWeapons";
+import { hitPointsPerModel, isCavalry } from "../model/unitStats";
+import type { RangedWeaponId } from "../../units/RangedWeapons";
+import { startingAmmunition } from "./archetypeUnits";
 
 interface FormationSpec {
   id: string;
@@ -35,7 +36,6 @@ interface FormationSpec {
   formationMode: FormationMode;
   cohesion: number;
   positions: GridPosition[];
-  colourName: string;
   equipment?: EquipmentAbility[];
   rangedWeaponId?: RangedWeaponId;
 }
@@ -167,14 +167,6 @@ function prototypeBattlefieldMap(): BattlefieldMap {
   return map;
 }
 
-function rectangularPositions(x: number, y: number, width: number, depth: number): GridPosition[] {
-  const positions: GridPosition[] = [];
-  for (let row = 0; row < depth; row += 1) {
-    for (let column = 0; column < width; column += 1) positions.push({ x: x + column, y: y + row });
-  }
-  return positions;
-}
-
 function unitProfile(spec: FormationSpec): UnitProfile {
   const cavalry = isCavalry(spec.unitType);
   const heavyInfantry = spec.unitType === "heavy_infantry";
@@ -191,54 +183,20 @@ function unitProfile(spec: FormationSpec): UnitProfile {
   };
 }
 
-function addFormation(
-  state: GameState,
-  spec: FormationSpec,
-): void {
-  const formation: Formation = {
-    id: spec.id,
-    factionId: spec.factionId,
-    name: spec.name,
-    blockIds: [],
-    facing: spec.facing,
-    formationMode: spec.formationMode,
-    unit: unitProfile(spec),
-    cohesion: spec.cohesion,
-    maxCohesion: 10,
-    initialModelCount: 0,
-    casualtyMoraleStage: 0,
-    movementRemaining: BALANCE.movement[spec.unitType],
-    hasActivated: false,
-    leaderCharacterId: null,
-    status: "formed",
-    ammunition: spec.rangedWeaponId
-      ? getRangedWeaponProfile(spec.rangedWeaponId).maximumAmmunition
-      : undefined,
-  };
-  state.formations[spec.id] = formation;
-  const capacity = modelCapacity(formation);
-  const blockIds = spec.positions.map((position, index) => {
-    const id = `${spec.id}-b${index + 1}`;
-    state.blocks[id] = {
-      id,
+function addFormation(state: GameState, spec: FormationSpec): void {
+  const unit = unitProfile(spec);
+  deployFormation(state, {
+    ...createFormation({
+      id: spec.id,
       factionId: spec.factionId,
-      formationId: spec.id,
-      position: { ...position },
-      models: capacity,
-      modelCapacity: capacity,
-      wounds: 0,
-      wavering: false,
-      characterId: null,
-      hasRetreatedThisRound: false,
-      isContested: false,
-      chargeDistance: 0,
-      chargeMomentum: 0,
-    };
-    return id;
-  });
-  formation.blockIds = blockIds;
-  formation.initialModelCount = blockIds.length * capacity;
-  void spec.colourName;
+      name: spec.name,
+      facing: spec.facing,
+      formationMode: spec.formationMode,
+      unit,
+      cohesion: spec.cohesion,
+    }),
+    ...startingAmmunition(unit),
+  }, spec.positions);
 }
 
 function attachCharacter(state: GameState, character: Character): void {
@@ -251,31 +209,8 @@ function attachCharacter(state: GameState, character: Character): void {
   }
 }
 
-export function createPrototypeGridScenario(): GameState {
-  const state: GameState = {
-    battlefield: prototypeBattlefieldMap(),
-    round: 1,
-    activeFactionId: "roman",
-    blocks: {},
-    formations: {},
-    characters: {},
-    selectedFormationId: null,
-    selectedBlockId: null,
-    phase: "selecting",
-    currentAction: null,
-    eventLog: [],
-    nextEventId: 1,
-    nextFragmentId: 1,
-    triggerState: { fireCounts: {}, interactions: [] },
-  };
-
-  placeBuilding(state, {
-    id: "roadside-hall",
-    origin: { x: 8, y: 10 },
-    width: 2,
-    depth: 2,
-  });
-
+/** The standard opposing forces: mission maps place them, and the test battle uses them where they stand. */
+export function addPrototypeForces(state: GameState): void {
   addFormation(state, {
     id: "legio-i",
     name: "Legio I Augusta",
@@ -285,7 +220,6 @@ export function createPrototypeGridScenario(): GameState {
     formationMode: "closed",
     cohesion: 10,
     positions: rectangularPositions(2, 9, 3, 3),
-    colourName: "red",
   });
   addFormation(state, {
     id: "lanciarii",
@@ -296,7 +230,6 @@ export function createPrototypeGridScenario(): GameState {
     formationMode: "closed",
     cohesion: 9,
     positions: rectangularPositions(11, 7, 3, 3),
-    colourName: "dark red",
     equipment: ["shield_front", "brace_against_charge"],
   });
   addFormation(state, {
@@ -308,7 +241,6 @@ export function createPrototypeGridScenario(): GameState {
     formationMode: "open",
     cohesion: 7,
     positions: rectangularPositions(2, 13, 5, 1),
-    colourName: "light red",
     rangedWeaponId: "composite-bow",
   });
   addFormation(state, {
@@ -320,7 +252,6 @@ export function createPrototypeGridScenario(): GameState {
     formationMode: "closed",
     cohesion: 8,
     positions: rectangularPositions(2, 5, 5, 3),
-    colourName: "brown",
   });
   addFormation(state, {
     id: "loose-warband",
@@ -331,7 +262,6 @@ export function createPrototypeGridScenario(): GameState {
     formationMode: "open",
     cohesion: 7,
     positions: rectangularPositions(13, 1, 4, 3),
-    colourName: "dark brown",
   });
   addFormation(state, {
     id: "saxon-cavalry",
@@ -342,7 +272,6 @@ export function createPrototypeGridScenario(): GameState {
     formationMode: "open",
     cohesion: 7,
     positions: [{ x: 17, y: 7 }, { x: 17, y: 8 }, { x: 17, y: 9 }],
-    colourName: "umber",
   });
 
   attachCharacter(state, {
@@ -397,5 +326,16 @@ export function createPrototypeGridScenario(): GameState {
     temporaryMeleeBonus: 0,
   });
 
+}
+
+export function createPrototypeGridScenario(): GameState {
+  const state = createBattleState(prototypeBattlefieldMap());
+  placeBuilding(state, {
+    id: "roadside-hall",
+    origin: { x: 8, y: 10 },
+    width: 2,
+    depth: 2,
+  });
+  addPrototypeForces(state);
   return state;
 }

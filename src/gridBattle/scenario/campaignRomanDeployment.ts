@@ -1,19 +1,11 @@
 import { ROMAN_FORMATION_BY_ID, type RomanFormationDefinition } from "../../scenario/Roster";
 import { getUnitArchetype, type UnitArchetypeProfile } from "../../units/UnitArchetypes";
-import { getRangedWeaponProfile } from "../../units/RangedWeapons";
+import { createFormation, deployFormation, rectangularPositions } from "../model/battleStateFactory";
 import { BALANCE, GRID_COLUMNS, GRID_ROWS } from "../model/config";
 import { buildingCellAt, terrainAt, terrainElevationAt, terrainObjectsAt } from "../model/terrain";
-import type {
-  Character,
-  EquipmentAbility,
-  Formation,
-  FormationMode,
-  GameState,
-  GridPosition,
-  UnitProfile,
-} from "../model/types";
-import { gridUnitType } from "./archetypeUnits";
-import { hitPointsPerModel, modelCapacity } from "../model/unitStats";
+import type { Character, Formation, FormationMode, GameState, GridPosition } from "../model/types";
+import { modelCapacity } from "../model/unitStats";
+import { archetypeCohesion, archetypeUnitProfile, startingAmmunition } from "./archetypeUnits";
 
 interface DeploymentLayout {
   infantry: readonly (readonly GridPosition[])[];
@@ -22,59 +14,33 @@ interface DeploymentLayout {
   wallArchers?: readonly GridPosition[];
 }
 
-function rectangle(x: number, y: number, width: number, depth: number): GridPosition[] {
-  return Array.from({ length: width * depth }, (_, index) => ({
-    x: x + index % width,
-    y: y + Math.floor(index / width),
-  }));
-}
-
 function line(x: number, y: number, length: number): GridPosition[] {
   return Array.from({ length }, (_, index) => ({ x: x + index, y }));
 }
 
 const DEPLOYMENT_LAYOUTS: Readonly<Record<string, DeploymentLayout>> = {
   "roman-1-hadrians-wall": {
-    infantry: [rectangle(5, 7, 3, 3), rectangle(12, 7, 3, 3)],
+    infantry: [rectangularPositions(5, 7, 3, 3), rectangularPositions(12, 7, 3, 3)],
     cavalry: [line(13, 10, 7)],
     archers: [],
     wallArchers: line(2, 11, 5),
   },
   "roman-2-blackwater-ford": {
-    infantry: [rectangle(1, 9, 3, 3), rectangle(5, 9, 3, 3)],
+    infantry: [rectangularPositions(1, 9, 3, 3), rectangularPositions(5, 9, 3, 3)],
     cavalry: [line(13, 12, 7)],
     archers: [line(0, 13, 11)],
   },
   "roman-3-raven-at-vindolanda": {
     infantry: [
-      rectangle(0, 9, 3, 3),
-      rectangle(4, 9, 3, 3),
-      rectangle(8, 9, 3, 3),
-      rectangle(12, 9, 3, 3),
+      rectangularPositions(0, 9, 3, 3),
+      rectangularPositions(4, 9, 3, 3),
+      rectangularPositions(8, 9, 3, 3),
+      rectangularPositions(12, 9, 3, 3),
     ],
     cavalry: [line(13, 12, 7)],
     archers: [line(0, 13, 11)],
   },
 };
-
-function unitProfile(archetype: UnitArchetypeProfile, formationMode: FormationMode): UnitProfile {
-  const unitType = gridUnitType(archetype);
-  const equipment: EquipmentAbility[] = [];
-  if (archetype.hasShield) equipment.push("shield_front");
-  const rangedWeaponId = archetype.rangedWeapon?.id;
-  const modelSize = unitType === "light_cavalry" || unitType === "heavy_cavalry" ? 3 : 2;
-  return {
-    unitType,
-    modelSize,
-    attack: unitType === "light_infantry" ? 2 : 3,
-    armour: archetype.armourClass === "heavy" ? 1 : 0,
-    defence: 0,
-    hitPointsPerModel: hitPointsPerModel(formationMode, modelSize),
-    movement: BALANCE.movement[unitType],
-    equipment,
-    ...(rangedWeaponId ? { rangedWeaponId } : {}),
-  };
-}
 
 function removeRomanDeployments(state: GameState): void {
   for (const formation of Object.values(state.formations)) {
@@ -115,58 +81,35 @@ function addCharacter(state: GameState, definition: DeployableFormation, formati
   formation.leaderCharacterId = character.id;
 }
 
+function campaignFormationMode(archetype: UnitArchetypeProfile): FormationMode {
+  return archetype.type === "archers" ? "open" : "closed";
+}
+
 function addFormation(
   state: GameState,
   definition: DeployableFormation,
   positions: readonly GridPosition[],
 ): void {
   const archetype = getUnitArchetype(definition.archetypeId);
-  const formationMode: FormationMode = archetype.type === "archers" ? "open" : "closed";
+  const formationMode = campaignFormationMode(archetype);
+  const unit = archetypeUnitProfile(archetype, formationMode);
   const formation: Formation = {
-    id: definition.id,
-    factionId: "roman",
-    name: definition.name,
-    blockIds: [],
-    facing: "north",
-    formationMode,
-    unit: unitProfile(archetype, formationMode),
-    cohesion: Math.max(1, Math.min(10, Math.round(archetype.startingMorale / 10))),
-    maxCohesion: 10,
-    initialModelCount: definition.count,
-    casualtyMoraleStage: 0,
-    movementRemaining: BALANCE.movement[gridUnitType(archetype)],
-    hasActivated: false,
-    leaderCharacterId: null,
-    status: "formed",
-    ...(archetype.rangedWeapon
-      ? { ammunition: getRangedWeaponProfile(archetype.rangedWeapon.id).maximumAmmunition }
-      : {}),
+    ...createFormation({
+      id: definition.id,
+      factionId: "roman",
+      name: definition.name,
+      facing: "north",
+      formationMode,
+      unit,
+      cohesion: archetypeCohesion(archetype),
+    }),
+    ...startingAmmunition(unit),
   };
-  const capacity = modelCapacity(formation);
-  const requiredBlocks = Math.ceil(definition.count / capacity);
+  const requiredBlocks = Math.ceil(definition.count / modelCapacity(formation));
   if (positions.length !== requiredBlocks) {
     throw new Error(`${definition.name} needs ${requiredBlocks} deployment blocks, received ${positions.length}.`);
   }
-  formation.blockIds = positions.map((position, index) => {
-    const id = `${definition.id}-b${index + 1}`;
-    state.blocks[id] = {
-      id,
-      factionId: "roman",
-      formationId: definition.id,
-      position: { ...position },
-      models: Math.min(capacity, definition.count - index * capacity),
-      modelCapacity: capacity,
-      wounds: 0,
-      wavering: false,
-      characterId: null,
-      hasRetreatedThisRound: false,
-      isContested: false,
-      chargeDistance: 0,
-      chargeMomentum: 0,
-    };
-    return id;
-  });
-  state.formations[formation.id] = formation;
+  deployFormation(state, formation, positions, definition.count);
   addCharacter(state, definition, formation);
 }
 
@@ -237,7 +180,7 @@ function testDeploymentFootprint(state: GameState, blockCount: number, gap: bool
     const depth = Math.ceil(blockCount / width);
     for (let y = GRID_ROWS - depth; y >= 0; y -= 1) {
       for (let x = 0; x + width <= GRID_COLUMNS; x += 1) {
-        const positions = rectangle(x, y, width, depth).slice(0, blockCount);
+        const positions = rectangularPositions(x, y, width, depth).slice(0, blockCount);
         if (positions.every(free)) return positions;
       }
     }
@@ -253,8 +196,8 @@ export function applyTestRomanDeployment(
   removeRomanDeployments(state);
   for (const unit of units) {
     const archetype = getUnitArchetype(unit.archetypeId);
-    const mode: FormationMode = archetype.type === "archers" ? "open" : "closed";
-    const capacity = Math.max(1, Math.floor(BALANCE.formationModelSpace[mode] / unitProfile(archetype, mode).modelSize));
+    const mode = campaignFormationMode(archetype);
+    const capacity = Math.max(1, Math.floor(BALANCE.formationModelSpace[mode] / archetypeUnitProfile(archetype, mode).modelSize));
     const blockCount = Math.ceil(unit.strength / capacity);
     const positions = testDeploymentFootprint(state, blockCount, true) ?? testDeploymentFootprint(state, blockCount, false);
     if (!positions) throw new Error(`The test battlefield has no room for ${unit.name}.`);

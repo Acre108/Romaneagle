@@ -1,17 +1,14 @@
 import {
-  BATTLEFIELD_MAP_SCHEMA_VERSION,
   addMapTerrainObject,
-  createBattlefieldMap,
   setMapEdgeFeature,
   type BattlefieldMap,
   type GroundTerrainType,
   type GroundTextureId,
   type TerrainTile,
 } from "../model/battlefieldMap";
-import { GRID_COLUMNS, GRID_ROWS } from "../model/config";
-import type { GameState, GridPosition } from "../model/types";
-import { applyCampaignRomanDeployment } from "./campaignRomanDeployment";
-import { createPrototypeGridScenario } from "./prototypeScenario";
+import { rectangularPositions } from "../model/battleStateFactory";
+import type { GameState } from "../model/types";
+import { createMissionMap, createMissionScenario } from "./missionScenario";
 
 function isFortWall(x: number, y: number): boolean {
   const northWall = y === 0 && x >= 6 && x <= 13;
@@ -58,20 +55,10 @@ function tileAt(x: number, y: number): TerrainTile {
 
 /** Mission Three battlefield: Vindolanda fort, its southern gate, and the military-road junction. */
 export function createVindolandaBattlefieldMap(): BattlefieldMap {
-  const map = createBattlefieldMap({
-    schemaVersion: BATTLEFIELD_MAP_SCHEMA_VERSION,
-    width: GRID_COLUMNS,
-    height: GRID_ROWS,
-    tiles: Array.from({ length: GRID_COLUMNS * GRID_ROWS }, (_, index) => {
-      const x = index % GRID_COLUMNS;
-      const y = Math.floor(index / GRID_COLUMNS);
-      return tileAt(x, y);
-    }),
-    buildings: [
-      { id: "vindolanda-west-barracks", origin: { x: 7, y: 1 }, width: 2, depth: 2 },
-      { id: "vindolanda-east-barracks", origin: { x: 11, y: 1 }, width: 2, depth: 2 },
-    ],
-  });
+  const map = createMissionMap(tileAt, [
+    { id: "vindolanda-west-barracks", origin: { x: 7, y: 1 }, width: 2, depth: 2 },
+    { id: "vindolanda-east-barracks", origin: { x: 11, y: 1 }, width: 2, depth: 2 },
+  ]);
 
   for (let y = 5; y <= 9; y += 1) {
     setMapEdgeFeature(map, { x: 4, y }, "east", "open_short");
@@ -89,41 +76,21 @@ export function createVindolandaBattlefieldMap(): BattlefieldMap {
   return map;
 }
 
-function rectangularPositions(x: number, y: number, width: number, depth: number): GridPosition[] {
-  return Array.from({ length: width * depth }, (_, index) => ({
-    x: x + index % width,
-    y: y + Math.floor(index / width),
-  }));
-}
-
-function relocateFormation(state: GameState, formationId: string, positions: readonly GridPosition[]): void {
-  const formation = state.formations[formationId];
-  if (!formation || formation.blockIds.length !== positions.length) {
-    throw new Error(`Mission Three placement does not match formation ${formationId}.`);
-  }
-  formation.blockIds.forEach((blockId, index) => {
-    state.blocks[blockId]!.position = { ...positions[index]! };
-  });
-}
-
 export function createVindolandaScenario(selectedRomanFormationIds: readonly string[] = []): GameState {
-  const state = createPrototypeGridScenario();
-  state.battlefield = createVindolandaBattlefieldMap();
-
-  relocateFormation(state, "legio-i", rectangularPositions(5, 9, 3, 3));
-  relocateFormation(state, "lanciarii", rectangularPositions(11, 9, 3, 3));
-  relocateFormation(state, "exploratores", rectangularPositions(8, 13, 5, 1));
-
-  relocateFormation(state, "great-warband", rectangularPositions(7, 5, 5, 3));
-  relocateFormation(state, "loose-warband", rectangularPositions(1, 5, 4, 3));
-  relocateFormation(state, "saxon-cavalry", [
-    { x: 17, y: 5 }, { x: 17, y: 6 }, { x: 17, y: 7 },
-  ]);
-  state.formations["saxon-cavalry"]!.name = "Raven Horsemen";
-
-  if (selectedRomanFormationIds.length > 0) {
-    applyCampaignRomanDeployment(state, "roman-3-raven-at-vindolanda", selectedRomanFormationIds);
-  }
-
-  return state;
+  return createMissionScenario({
+    missionId: "roman-3-raven-at-vindolanda",
+    map: createVindolandaBattlefieldMap(),
+    placements: {
+      "legio-i": rectangularPositions(5, 9, 3, 3),
+      "lanciarii": rectangularPositions(11, 9, 3, 3),
+      "exploratores": rectangularPositions(8, 13, 5, 1),
+      "great-warband": rectangularPositions(7, 5, 5, 3),
+      "loose-warband": rectangularPositions(1, 5, 4, 3),
+      "saxon-cavalry": [
+        { x: 17, y: 5 }, { x: 17, y: 6 }, { x: 17, y: 7 },
+      ],
+    },
+    renamedFormations: { "saxon-cavalry": "Raven Horsemen" },
+    selectedRomanFormationIds,
+  });
 }

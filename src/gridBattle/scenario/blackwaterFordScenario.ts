@@ -1,16 +1,13 @@
 import {
-  BATTLEFIELD_MAP_SCHEMA_VERSION,
   addMapTerrainObject,
-  createBattlefieldMap,
   type BattlefieldMap,
   type GroundTerrainType,
   type GroundTextureId,
   type TerrainTile,
 } from "../model/battlefieldMap";
-import { GRID_COLUMNS, GRID_ROWS } from "../model/config";
-import type { GameState, GridPosition } from "../model/types";
-import { applyCampaignRomanDeployment } from "./campaignRomanDeployment";
-import { createPrototypeGridScenario } from "./prototypeScenario";
+import { rectangularPositions } from "../model/battleStateFactory";
+import type { GameState } from "../model/types";
+import { createMissionMap, createMissionScenario } from "./missionScenario";
 
 const RIVER_ROWS = new Set([6, 7]);
 const MAIN_FORD_COLUMNS = new Set([8, 9, 10]);
@@ -54,17 +51,7 @@ function tileAt(x: number, y: number): TerrainTile {
 
 /** Mission Two battlefield: a dangerous main ford with a narrower eastern horse crossing. */
 export function createBlackwaterFordBattlefieldMap(): BattlefieldMap {
-  const map = createBattlefieldMap({
-    schemaVersion: BATTLEFIELD_MAP_SCHEMA_VERSION,
-    width: GRID_COLUMNS,
-    height: GRID_ROWS,
-    tiles: Array.from({ length: GRID_COLUMNS * GRID_ROWS }, (_, index) => {
-      const x = index % GRID_COLUMNS;
-      const y = Math.floor(index / GRID_COLUMNS);
-      return tileAt(x, y);
-    }),
-    buildings: [],
-  });
+  const map = createMissionMap(tileAt, []);
 
   for (const [x, y, object] of [
     [1, 3, "tree_small"], [2, 4, "tree_large"], [4, 3, "tree_small"],
@@ -77,40 +64,20 @@ export function createBlackwaterFordBattlefieldMap(): BattlefieldMap {
   return map;
 }
 
-function rectangularPositions(x: number, y: number, width: number, depth: number): GridPosition[] {
-  return Array.from({ length: width * depth }, (_, index) => ({
-    x: x + index % width,
-    y: y + Math.floor(index / width),
-  }));
-}
-
-function relocateFormation(state: GameState, formationId: string, positions: readonly GridPosition[]): void {
-  const formation = state.formations[formationId];
-  if (!formation || formation.blockIds.length !== positions.length) {
-    throw new Error(`Mission Two placement does not match formation ${formationId}.`);
-  }
-  formation.blockIds.forEach((blockId, index) => {
-    state.blocks[blockId]!.position = { ...positions[index]! };
-  });
-}
-
 export function createBlackwaterFordScenario(selectedRomanFormationIds: readonly string[] = []): GameState {
-  const state = createPrototypeGridScenario();
-  state.battlefield = createBlackwaterFordBattlefieldMap();
-
-  relocateFormation(state, "legio-i", rectangularPositions(1, 9, 3, 3));
-  relocateFormation(state, "lanciarii", rectangularPositions(5, 9, 3, 3));
-  relocateFormation(state, "exploratores", rectangularPositions(1, 13, 5, 1));
-
-  relocateFormation(state, "great-warband", rectangularPositions(6, 1, 5, 3));
-  relocateFormation(state, "loose-warband", rectangularPositions(11, 8, 4, 3));
-  relocateFormation(state, "saxon-cavalry", [
-    { x: 17, y: 2 }, { x: 17, y: 3 }, { x: 17, y: 4 },
-  ]);
-
-  if (selectedRomanFormationIds.length > 0) {
-    applyCampaignRomanDeployment(state, "roman-2-blackwater-ford", selectedRomanFormationIds);
-  }
-
-  return state;
+  return createMissionScenario({
+    missionId: "roman-2-blackwater-ford",
+    map: createBlackwaterFordBattlefieldMap(),
+    placements: {
+      "legio-i": rectangularPositions(1, 9, 3, 3),
+      "lanciarii": rectangularPositions(5, 9, 3, 3),
+      "exploratores": rectangularPositions(1, 13, 5, 1),
+      "great-warband": rectangularPositions(6, 1, 5, 3),
+      "loose-warband": rectangularPositions(11, 8, 4, 3),
+      "saxon-cavalry": [
+        { x: 17, y: 2 }, { x: 17, y: 3 }, { x: 17, y: 4 },
+      ],
+    },
+    selectedRomanFormationIds,
+  });
 }

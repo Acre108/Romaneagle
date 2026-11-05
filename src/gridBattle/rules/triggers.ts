@@ -2,7 +2,8 @@ import { emitEvent, eventsSince } from "../events/events";
 import { blocksAt, inBounds, positionKey } from "../model/occupancy";
 import { terrainBlockCapacityAt } from "../model/terrain";
 import type { MapTriggerDefinition, MapTriggerEffect, TriggerSpawnFormation } from "../model/triggerDefinitions";
-import type { Direction, Formation, GameEvent, GameState, TroopBlock } from "../model/types";
+import { createFormation, createTroopBlock } from "../model/battleStateFactory";
+import type { Direction, Formation, GameEvent, GameState } from "../model/types";
 import { modelCapacity } from "../model/unitStats";
 import { pressurePreview, resolvePressure } from "./combat";
 import { CARDINAL_DIRECTIONS, directionBetween, directionVector, manhattanDistance } from "./direction";
@@ -72,21 +73,17 @@ function spawnFormation(state: GameState, triggerId: string, spec: TriggerSpawnF
     return failEffect(state, triggerId, `Trigger could not spawn ${spec.name}: its footprint contains duplicate squares.`);
   }
   const formation: Formation = {
-    id: spec.id,
-    factionId: spec.factionId,
-    name: spec.name,
+    ...createFormation({
+      id: spec.id,
+      factionId: spec.factionId,
+      name: spec.name,
+      facing: spec.facing,
+      formationMode: spec.formationMode,
+      unit: { ...spec.unit, equipment: [...spec.unit.equipment] },
+      cohesion: spec.cohesion,
+      maxCohesion: spec.maxCohesion,
+    }),
     blockIds,
-    facing: spec.facing,
-    formationMode: spec.formationMode,
-    unit: { ...spec.unit, equipment: [...spec.unit.equipment] },
-    cohesion: spec.cohesion,
-    maxCohesion: spec.maxCohesion,
-    initialModelCount: 0,
-    casualtyMoraleStage: 0,
-    movementRemaining: spec.unit.movement,
-    hasActivated: false,
-    leaderCharacterId: null,
-    status: "formed",
   };
   const capacity = modelCapacity(formation);
   const illegalPosition = spec.positions.find((position) =>
@@ -99,21 +96,7 @@ function spawnFormation(state: GameState, triggerId: string, spec: TriggerSpawnF
   formation.initialModelCount = capacity * spec.positions.length;
   state.formations[formation.id] = formation;
   spec.positions.forEach((position, index) => {
-    const block: TroopBlock = {
-      id: blockIds[index]!,
-      factionId: formation.factionId,
-      formationId: formation.id,
-      position: { ...position },
-      models: capacity,
-      modelCapacity: capacity,
-      wounds: 0,
-      wavering: false,
-      characterId: null,
-      hasRetreatedThisRound: false,
-      isContested: false,
-      chargeDistance: 0,
-      chargeMomentum: 0,
-    };
+    const block = createTroopBlock(blockIds[index]!, formation, position, capacity, capacity);
     state.blocks[block.id] = block;
   });
   emitEvent(state, "trigger_spawned", `${formation.name} entered the battlefield.`, {

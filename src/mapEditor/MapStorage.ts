@@ -3,12 +3,13 @@ import {
   serializeBattlefieldMap,
   type BattlefieldMap,
 } from "../gridBattle/model/battlefieldMap";
-import type { ProjectMapSummary } from "./localMapServer";
+import type { ProjectMapSummary, UnreadableProjectMap } from "./localMapServer";
 
 const MAP_API_PATH = "/api/project-maps";
 
 interface ProjectMapListResponse {
   maps: ProjectMapSummary[];
+  unreadable: UnreadableProjectMap[];
 }
 
 interface ProjectMapSaveResponse {
@@ -27,6 +28,14 @@ export function projectMapFileName(name: string): string {
   return `${stem}.json`;
 }
 
+/** The chosen name belongs to a different saved map; replacing it needs the author's say-so. */
+export class ProjectMapConflictError extends Error {
+  constructor(readonly fileName: string, message: string) {
+    super(message);
+    this.name = "ProjectMapConflictError";
+  }
+}
+
 async function responseJson<T>(response: Response): Promise<T> {
   if (!response.headers.get("Content-Type")?.includes("application/json")) {
     throw new Error("Project map storage is unavailable in this static build.");
@@ -36,9 +45,19 @@ async function responseJson<T>(response: Response): Promise<T> {
   return value;
 }
 
-export async function listProjectMaps(): Promise<ProjectMapSummary[]> {
+/** Describes the saved maps folder, naming any file that exists but cannot be used. */
+export function savedMapsStatus(maps: readonly unknown[], unreadable: readonly UnreadableProjectMap[]): string {
+  const available = maps.length === 0
+    ? "No saved maps yet. Create one in the map editor, then choose Save to project."
+    : `${maps.length} saved ${maps.length === 1 ? "map" : "maps"} available.`;
+  if (unreadable.length === 0) return available;
+  const details = unreadable.map((file) => `${file.fileName}: ${file.reason}`).join("; ");
+  return `${available} Could not read ${unreadable.length} ${unreadable.length === 1 ? "file" : "files"} in public/maps. ${details}.`;
+}
+
+export async function listProjectMaps(): Promise<ProjectMapListResponse> {
   const response = await fetch(MAP_API_PATH, { headers: { Accept: "application/json" } });
-  return (await responseJson<ProjectMapListResponse>(response)).maps;
+  return responseJson<ProjectMapListResponse>(response);
 }
 
 export async function loadProjectMap(fileName: string): Promise<BattlefieldMap> {
@@ -51,12 +70,18 @@ export async function loadProjectMap(fileName: string): Promise<BattlefieldMap> 
 export async function saveProjectMap(
   name: string,
   map: BattlefieldMap,
+  overwrite = false,
 ): Promise<ProjectMapSaveResponse> {
   const fileName = projectMapFileName(name);
-  const response = await fetch(`${MAP_API_PATH}/${encodeURIComponent(fileName)}`, {
+  const query = overwrite ? "?overwrite=true" : "";
+  const response = await fetch(`${MAP_API_PATH}/${encodeURIComponent(fileName)}${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(serializeBattlefieldMap(map)),
   });
+  if (response.status === 409) {
+    const { error } = await response.json() as { error?: string };
+    throw new ProjectMapConflictError(fileName, error ?? `A saved map named ${fileName} already exists.`);
+  }
   return responseJson<ProjectMapSaveResponse>(response);
 }

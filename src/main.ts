@@ -1,4 +1,6 @@
 import "./style.css";
+import { requiredElement } from "./ui/dom";
+import { renderTestScenario, selectedTestDeployment, toggleTestUnit } from "./ui/TestScenarioScreen";
 import { CustomMapGame, Game } from "./core/Game";
 import type { BattleFormationResult, BattleReport } from "./campaign/BattleReport";
 import {
@@ -20,6 +22,7 @@ import type { CampaignDefinition, MissionDefinition } from "./campaign/CampaignT
 import {
   completeMission,
   loadCampaignProgress,
+  resilientProgressStorage,
   saveCampaignProgress,
 } from "./campaign/CampaignProgress";
 import {
@@ -33,13 +36,6 @@ import { applyCompanionPortrait } from "./ui/Portraits";
 import { getUnitArchetype } from "./units/UnitArchetypes";
 import { TEST_SCENARIO_MISSION } from "./campaign/missions/TestScenarioMission";
 import {
-  DEFAULT_TEST_UNIT_IDS,
-  TEST_SAXON_SPECS,
-  TEST_UNIT_OPTIONS,
-  type TestUnitOption,
-} from "./scenario/TestScenario";
-import {
-  formatProfileClassification,
   formatProfileHandling,
   formatProfileRanged,
 } from "./units/UnitPresentation";
@@ -47,18 +43,14 @@ import { MapEditor } from "./mapEditor/MapEditor";
 import {
   listProjectMaps,
   loadProjectMap,
+  savedMapsStatus,
   type ProjectMapSummary,
 } from "./mapEditor/MapStorage";
 
 const campaignEvents = new AbortController();
 const listenerOptions = { signal: campaignEvents.signal };
-let campaignProgress = loadCampaignProgress(window.localStorage);
-
-const requiredElement = <T extends HTMLElement>(id: string): T => {
-  const found = document.getElementById(id);
-  if (!found) throw new Error(`Missing campaign element #${id}`);
-  return found as T;
-};
+const progressStorage = resilientProgressStorage(() => window.localStorage);
+let campaignProgress = loadCampaignProgress(progressStorage);
 
 const companionFormation = new Map(
   ROMAN_FORMATIONS.map((formation) => [formation.companion.id, formation]),
@@ -77,7 +69,6 @@ let launchTimer: number | undefined;
 let testScenarioActive = false;
 let customMapBattleActive = false;
 let mapEditor: MapEditor | undefined;
-const selectedTestUnitIds = new Set(DEFAULT_TEST_UNIT_IDS);
 
 function missionFormationDefinitions(mission: MissionDefinition): RomanFormationDefinition[] {
   return mission.deployment.formationIds.map((id) => {
@@ -140,93 +131,6 @@ function createCampaignCard(campaign: CampaignDefinition): HTMLElement {
 
 function renderCampaignSelection(): void {
   requiredElement("campaign-grid").replaceChildren(...CAMPAIGNS.map(createCampaignCard));
-}
-
-function createTestUnitCard(option: TestUnitOption): HTMLElement {
-  const profile = getUnitArchetype(option.archetypeId);
-  const selected = selectedTestUnitIds.has(option.id);
-  const card = document.createElement("article");
-  card.className = `test-unit-card${selected ? " selected" : ""}`;
-  card.tabIndex = 0;
-  card.setAttribute("role", "checkbox");
-  card.setAttribute("aria-checked", String(selected));
-  card.dataset.testUnitId = option.id;
-  const name = document.createElement("h3");
-  name.textContent = option.name;
-  const role = document.createElement("p");
-  role.className = "test-unit-role";
-  role.textContent = formatProfileClassification(profile);
-  const meta = document.createElement("div");
-  meta.className = "test-unit-meta";
-  const strength = document.createElement("span");
-  strength.textContent = `${option.strength} strength`;
-  const handling = document.createElement("span");
-  handling.textContent = formatProfileHandling(profile);
-  meta.append(strength, handling);
-  const check = document.createElement("span");
-  check.className = "test-unit-check";
-  check.setAttribute("aria-hidden", "true");
-  check.textContent = "✓";
-  card.append(name, role, meta);
-  const ranged = formatProfileRanged(profile);
-  if (ranged) {
-    const weapon = document.createElement("p");
-    weapon.className = "test-unit-equipment";
-    weapon.textContent = ranged;
-    card.append(weapon);
-  }
-  card.append(check);
-  return card;
-}
-
-function updateTestDeployment(): void {
-  const selected = TEST_UNIT_OPTIONS.filter((option) => selectedTestUnitIds.has(option.id));
-  const deployment = TEST_SCENARIO_MISSION.deployment;
-  requiredElement("test-unit-count").textContent = String(selected.length);
-  requiredElement("test-deployed-strength").textContent = String(
-    selected.reduce((total, option) => total + option.strength, 0),
-  );
-  requiredElement<HTMLButtonElement>("begin-test-scenario").disabled =
-    selected.length < deployment.minimum || selected.length > deployment.maximum;
-  requiredElement("test-deployment-warning").textContent = selected.length < deployment.minimum
-    ? `Select at least ${deployment.minimum} formation.`
-    : selected.length > deployment.maximum
-      ? `Only ${deployment.maximum} formations may deploy.`
-      : deployment.note;
-}
-
-function renderTestScenario(): void {
-  requiredElement("test-unit-grid").replaceChildren(
-    ...TEST_UNIT_OPTIONS.map(createTestUnitCard),
-  );
-  const opposition = TEST_SAXON_SPECS
-    .map((spec) => {
-      const row = document.createElement("div");
-      const name = document.createElement("span");
-      name.textContent = spec.name;
-      const role = document.createElement("small");
-      role.textContent = spec.role;
-      row.append(name, role);
-      return row;
-    });
-  requiredElement("test-opposition-list").replaceChildren(...opposition);
-  updateTestDeployment();
-}
-
-function toggleTestUnit(card: HTMLElement): void {
-  const id = card.dataset.testUnitId;
-  if (!id) return;
-  const deployment = TEST_SCENARIO_MISSION.deployment;
-  if (!selectedTestUnitIds.has(id) && selectedTestUnitIds.size >= deployment.maximum) {
-    requiredElement("test-deployment-warning").textContent =
-      `Only ${deployment.maximum} formations may deploy.`;
-    return;
-  }
-  if (selectedTestUnitIds.has(id)) selectedTestUnitIds.delete(id);
-  else selectedTestUnitIds.add(id);
-  card.classList.toggle("selected", selectedTestUnitIds.has(id));
-  card.setAttribute("aria-checked", String(selectedTestUnitIds.has(id)));
-  updateTestDeployment();
 }
 
 function openTestScenario(): void {
@@ -396,7 +300,7 @@ function renderCampaignPhase(campaign: CampaignDefinition, mission: MissionDefin
     selectedCampaignId: campaign.id,
     selectedMissionIds: { ...campaignProgress.selectedMissionIds, [campaign.id]: mission.id },
   };
-  saveCampaignProgress(window.localStorage, campaignProgress);
+  saveCampaignProgress(progressStorage, campaignProgress);
 
   requiredElement("campaign-phase-title").textContent = campaign.title;
   requiredElement("campaign-phase-number").textContent = `${campaign.numeral} of ${CAMPAIGNS.length}`;
@@ -511,7 +415,7 @@ function handleBattleEnded(report: BattleReport, persistProgress = true): void {
   }
   if (persistProgress) {
     campaignProgress = completeMission(campaignProgress, activeMission.id);
-    saveCampaignProgress(window.localStorage, campaignProgress);
+    saveCampaignProgress(progressStorage, campaignProgress);
     renderCampaignSelection();
   }
   lastBattleReport = report;
@@ -738,12 +642,12 @@ function previewVictoryFlow(): void {
   }, false);
 }
 
-function showMapEditor(map?: Awaited<ReturnType<typeof loadProjectMap>>, name?: string): void {
+function showMapEditor(map?: Awaited<ReturnType<typeof loadProjectMap>>, name?: string, fileName?: string): void {
   requiredElement("saved-map-browser").hidden = true;
   requiredElement("campaign-select").hidden = true;
   requiredElement("map-editor-screen").hidden = false;
   mapEditor ??= new MapEditor(requiredElement("map-editor-screen"));
-  if (map && name) mapEditor.loadMap(map, name);
+  if (map && name && fileName) mapEditor.loadMap(map, name, fileName);
   else mapEditor.refresh();
 }
 
@@ -787,11 +691,9 @@ async function openSavedMapBrowser(): Promise<void> {
   list.replaceChildren();
   status.textContent = "Reading public/maps…";
   try {
-    const maps = await listProjectMaps();
+    const { maps, unreadable } = await listProjectMaps();
     list.replaceChildren(...maps.map(savedMapCard));
-    status.textContent = maps.length === 0
-      ? "No saved maps yet. Create one in the map editor, then choose Save to project."
-      : `${maps.length} saved ${maps.length === 1 ? "map" : "maps"} available.`;
+    status.textContent = savedMapsStatus(maps, unreadable);
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Saved maps could not be listed.";
     status.textContent = `${detail} Project-folder loading requires PLAY_GAME.cmd or npm run dev.`;
@@ -821,11 +723,12 @@ function bindEvents(): void {
     const name = card?.dataset.mapName;
     const action = actionButton?.dataset.mapAction;
     if (!actionButton || !fileName || !name || !action) return;
+    if (action !== "battle" && mapEditor && !mapEditor.confirmDiscardChanges()) return;
     actionButton.disabled = true;
     requiredElement("saved-map-browser-status").textContent = `Loading ${fileName}…`;
     void loadProjectMap(fileName).then((map) => {
       if (action === "battle") launchCustomMapBattle(map, name);
-      else showMapEditor(map, name);
+      else showMapEditor(map, name, fileName);
     }).catch((error: unknown) => {
       actionButton.disabled = false;
       requiredElement("saved-map-browser-status").textContent = error instanceof Error
@@ -861,9 +764,7 @@ function bindEvents(): void {
     toggleTestUnit(card);
   }, listenerOptions);
   requiredElement<HTMLButtonElement>("begin-test-scenario").addEventListener("click", () => {
-    const selected = TEST_UNIT_OPTIONS
-      .filter((option) => selectedTestUnitIds.has(option.id))
-      .map((option) => option.id);
+    const selected = selectedTestDeployment();
     if (selected.length < TEST_SCENARIO_MISSION.deployment.minimum) return;
     launchBattle(requiredElement("test-scenario-screen"), TEST_SCENARIO_MISSION, selected);
   }, listenerOptions);

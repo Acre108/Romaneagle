@@ -1,4 +1,5 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
@@ -25,6 +26,49 @@ export function isSafeProjectMapFileName(fileName: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.json$/.test(fileName);
 }
 
+/** Stops other websites writing maps while the dev server runs. Non-browser clients send no Origin. */
+export function isSameOriginRequest(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
+export class ProjectMapExistsError extends Error {
+  constructor(fileName: string) {
+    super(`A saved map named ${fileName} already exists.`);
+    this.name = "ProjectMapExistsError";
+  }
+}
+
+/**
+ * Replaces a map only when asked to, and in one step, so a failed write can never
+ * leave a half-written file in place of a good map.
+ */
+export async function writeProjectMapFile(
+  mapsDirectory: string,
+  fileName: string,
+  contents: string,
+  overwrite: boolean,
+): Promise<void> {
+  await mkdir(mapsDirectory, { recursive: true });
+  const path = join(mapsDirectory, fileName);
+  if (!overwrite) {
+    const exists = await stat(path).then(() => true, () => false);
+    if (exists) throw new ProjectMapExistsError(fileName);
+  }
+  const temporaryPath = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, contents, "utf8");
+    await rename(temporaryPath, path);
+  } catch (error) {
+    await rm(temporaryPath, { force: true });
+    throw error;
+  }
+}
+
 function displayName(fileName: string): string {
   return fileName
     .slice(0, -extname(fileName).length)
@@ -32,6 +76,11 @@ function displayName(fileName: string): string {
     .filter(Boolean)
     .map((part) => `${part[0]!.toUpperCase()}${part.slice(1)}`)
     .join(" ");
+}
+
+export interface UnreadableProjectMap {
+  fileName: string;
+  reason: string;
 }
 
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
@@ -54,17 +103,26 @@ async function readRequestJson(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
 }
 
-async function projectMapSummaries(mapsDirectory: string): Promise<ProjectMapSummary[]> {
+/** Lists every map file, reporting the ones it cannot use rather than hiding them. */
+export async function readProjectMaps(
+  mapsDirectory: string,
+): Promise<{ maps: ProjectMapSummary[]; unreadable: UnreadableProjectMap[] }> {
   await mkdir(mapsDirectory, { recursive: true });
   const entries = await readdir(mapsDirectory, { withFileTypes: true });
-  const summaries = await Promise.all(entries
-    .filter((entry) => entry.isFile() && isSafeProjectMapFileName(entry.name))
-    .map(async (entry): Promise<ProjectMapSummary | null> => {
+  const maps: ProjectMapSummary[] = [];
+  const unreadable: UnreadableProjectMap[] = [];
+  await Promise.all(entries
+    .filter((entry) => entry.isFile() && extname(entry.name) === ".json")
+    .map(async (entry) => {
+      if (!isSafeProjectMapFileName(entry.name)) {
+        unreadable.push({ fileName: entry.name, reason: "filenames may only use lowercase letters, digits and hyphens" });
+        return;
+      }
       const path = join(mapsDirectory, entry.name);
       try {
         const [contents, details] = await Promise.all([readFile(path, "utf8"), stat(path)]);
         const map = parseBattlefieldMap(JSON.parse(contents) as unknown);
-        return {
+        maps.push({
           fileName: entry.name,
           name: displayName(entry.name),
           width: map.width,
@@ -73,14 +131,14 @@ async function projectMapSummaries(mapsDirectory: string): Promise<ProjectMapSum
           saxonFormations: map.deployments.filter((deployment) => deployment.factionId === "saxon").length,
           spawnPoints: map.spawnPoints.length,
           modifiedAt: details.mtime.toISOString(),
-        };
-      } catch {
-        return null;
+        });
+      } catch (error) {
+        unreadable.push({ fileName: entry.name, reason: error instanceof Error ? error.message : "it could not be read" });
       }
     }));
-  return summaries
-    .filter((summary): summary is ProjectMapSummary => summary !== null)
-    .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
+  maps.sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt) || left.fileName.localeCompare(right.fileName));
+  unreadable.sort((left, right) => left.fileName.localeCompare(right.fileName));
+  return { maps, unreadable };
 }
 
 function requestFileName(pathname: string): string | null {
@@ -109,7 +167,7 @@ export function localMapStoragePlugin(mapsDirectory: string): Plugin {
         }
         try {
           if (request.method === "GET" && url.pathname === MAP_API_PATH) {
-            sendJson(response, 200, { maps: await projectMapSummaries(mapsDirectory) });
+            sendJson(response, 200, await readProjectMaps(mapsDirectory));
             return;
           }
           const fileName = requestFileName(url.pathname);
@@ -124,14 +182,26 @@ export function localMapStoragePlugin(mapsDirectory: string): Plugin {
             return;
           }
           if (request.method === "POST") {
+            if (!isSameOriginRequest(request.headers.origin, request.headers.host)) {
+              sendJson(response, 403, { error: "Cross-origin map writes are not allowed." });
+              return;
+            }
             const map = parseBattlefieldMap(await readRequestJson(request));
-            await mkdir(mapsDirectory, { recursive: true });
-            await writeFile(path, `${JSON.stringify(serializeBattlefieldMap(map), null, 2)}\n`, "utf8");
+            await writeProjectMapFile(
+              mapsDirectory,
+              fileName,
+              `${JSON.stringify(serializeBattlefieldMap(map), null, 2)}\n`,
+              url.searchParams.get("overwrite") === "true",
+            );
             sendJson(response, 200, { fileName, path: `public/maps/${fileName}` });
             return;
           }
           sendJson(response, 405, { error: "Method not allowed." });
         } catch (error) {
+          if (error instanceof ProjectMapExistsError) {
+            sendJson(response, 409, { error: error.message });
+            return;
+          }
           const message = error instanceof Error ? error.message : "Map operation failed.";
           const missing = typeof error === "object" && error !== null && "code" in error
             && error.code === "ENOENT";

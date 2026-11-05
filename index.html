@@ -66,7 +66,7 @@
           <p class="campaign-kicker">CARTOGRAPHER · FIELD WORKS</p>
           <h1>Battlefield map editor</h1>
         </div>
-        <div class="map-editor-header-help">Left-drag to paint · right-click to erase the selected layer</div>
+        <div class="map-editor-header-help">Left-drag to paint · right-click to erase the selected layer · Ctrl+Z to undo</div>
       </header>
 
       <main class="map-editor-main">
@@ -142,6 +142,10 @@
           <canvas id="map-editor-canvas" tabindex="0" aria-label="Top-down editable battlefield grid"></canvas>
           <div class="map-editor-canvas-caption">
             <span id="map-editor-status" role="status" aria-live="polite">Map editor ready.</span>
+            <div class="map-editor-history">
+              <button id="map-editor-undo" type="button" title="Undo (Ctrl+Z)" disabled>Undo</button>
+              <button id="map-editor-redo" type="button" title="Redo (Ctrl+Y)" disabled>Redo</button>
+            </div>
             <span><b id="map-editor-selection">Clear ground</b> tool</span>
           </div>
         </section>
@@ -161,6 +165,7 @@
               <div><dt>Unit blocks</dt><dd id="map-editor-unit-block-readout">0</dd></div>
               <div><dt>Formations</dt><dd id="map-editor-formation-readout">0</dd></div>
               <div><dt>Spawnpoints</dt><dd id="map-editor-spawn-readout">0</dd></div>
+              <div><dt>Save state</dt><dd id="map-editor-save-state">Blank map</dd></div>
               <div><dt>Format</dt><dd>Schema v2</dd></div>
             </dl>
           </section>
@@ -171,7 +176,8 @@
             <p><b>Build</b> Choose a rectangular footprint, then click its north-west origin tile.</p>
             <p><b>Boundary</b> Select an edge object, then paint near the desired tile side.</p>
             <p><b>Place</b> Select an object, then click cells. Objects can share a tile until its nine soldier spaces are full.</p>
-            <p><b>Remove</b> Choose a remove tool, or right-click to erase the currently selected layer.</p>
+            <p><b>Remove</b> Choose a remove tool, or right-click to erase the currently selected layer. Terrain tools reset the tile to clear ground.</p>
+            <p><b>Undo</b> Ctrl+Z undoes a whole stroke, and Ctrl+Y redoes it. Opening or creating a map clears the history.</p>
             <p><b>Deploy</b> Paint unit blocks. Four-directionally connected blocks of the same unit are exported as one formation.</p>
           </section>
           <button id="map-editor-save-project" class="begin-battle map-editor-save-project">

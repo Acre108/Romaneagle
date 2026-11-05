@@ -364,10 +364,6 @@ export function meleeDamagePreview(
   };
 }
 
-export function meleeCasualties(state: GameState, attackerId: string, defenderId: string): number {
-  return meleeDamagePreview(state, attackerId, defenderId)?.expectedCasualties ?? 0;
-}
-
 export interface PressureOptions {
   pressureBonus?: number;
   damagePenalty?: number;

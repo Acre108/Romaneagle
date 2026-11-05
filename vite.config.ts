@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import { localMapStoragePlugin } from "./src/mapEditor/localMapServer";
 
 export default defineConfig({

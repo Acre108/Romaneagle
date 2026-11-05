@@ -55,6 +55,7 @@ When asked for a feature that expands scope:
 Before completing a task, run:
 
 - npm run typecheck
+- npm run lint
 - npm run test
 - npm run build
 - npm run test:smoke, when the change affects visible or interactive behaviour

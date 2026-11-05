@@ -42,6 +42,26 @@ export function parseCampaignProgress(raw: string | null): CampaignProgress {
   }
 }
 
+/** Blocked or full browser storage must not stop the game: progress simply lasts for this session. */
+export function resilientProgressStorage(open: () => ProgressStorage): ProgressStorage {
+  return {
+    getItem(key) {
+      try {
+        return open().getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    setItem(key, value) {
+      try {
+        open().setItem(key, value);
+      } catch {
+        // Nothing useful to do: the in-memory progress is still correct.
+      }
+    },
+  };
+}
+
 export function loadCampaignProgress(storage: ProgressStorage): CampaignProgress {
   return parseCampaignProgress(storage.getItem(CAMPAIGN_PROGRESS_KEY));
 }

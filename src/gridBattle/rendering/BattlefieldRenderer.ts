@@ -133,6 +133,8 @@ const FORMATION_COLOURS: Record<string, number> = {
 
 const BRACED_BORDER_COLOUR = 0x3b82f6;
 
+const INSPECTED_OUTLINE_COLOUR = 0x63d4ff;
+
 const PLATE_COLOURS = { steady: 0xa8dcae, shaken: 0xe8c56a, breaking: 0xf08a7a } as const;
 
 const MORALE_COLOURS = {
@@ -1848,9 +1850,7 @@ export class BattlefieldRenderer {
     } else {
       for (const block of blocks) {
         this.drawShadow(position, block.id);
-        const selected = state.selectedBlockId === block.id
-          || (!state.selectedBlockId && state.selectedFormationId === block.formationId)
-          || (block.formationId !== null && this.inspectedFormationId === block.formationId);
+        const selected = state.selectedBlockId === block.id || (!state.selectedBlockId && state.selectedFormationId === block.formationId);
         const container = new Container({ label: block.id });
         this.applySurfaceTransform(container, position);
         container.position.set(centre.x, centre.y);
@@ -1882,6 +1882,9 @@ export class BattlefieldRenderer {
     const g = new Graphics();
     if (formationIsEngaged(state, formation.id)) {
       g.poly(DIAMOND_POINTS, true).stroke({ width: 2.5, color: 0xf08a4b, alpha: 0.72 });
+    }
+    if (this.inspectedFormationId === formation.id) {
+      g.poly(DIAMOND_POINTS, true).stroke({ width: 4, color: INSPECTED_OUTLINE_COLOUR, alpha: 1 });
     }
     for (const direction of ["north", "east", "south", "west"] as const) {
       if (this.sameFormationNeighbour(state, block, direction)) continue;
@@ -2014,8 +2017,11 @@ export class BattlefieldRenderer {
   }
 
   /** Name, morale, and men left for every formation on both sides, always on. */
-  private renderFormationPlates(state: GameState): void {
+  private renderFormationPlates(state: GameState, orderPreview: OrderConfirmationPreview | null): void {
+    const involved = new Set((orderPreview?.damage ?? [])
+      .map((damage) => baseFormationId(state.blocks[damage.blockId]?.formationId ?? null)));
     for (const plate of formationPlates(state)) {
+      if (involved.has(plate.key)) continue;
       const position = this.surfacePoint(plate.position, { x: 0, y: -BLOCK_PLATFORM_HEIGHT - 34 });
       const text = new Text({
         text: plate.text,
@@ -2174,7 +2180,7 @@ export class BattlefieldRenderer {
     this.renderCasualtyBodies();
     this.renderActivationPulses(state);
     this.renderCharacters(state);
-    this.renderFormationPlates(state);
+    this.renderFormationPlates(state, orderPreview);
     this.renderCasualtySkulls();
     this.renderOrderConfirmationPreview(orderPreview);
     this.animateMovedBlocks(state);

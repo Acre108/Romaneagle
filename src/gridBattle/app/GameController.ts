@@ -137,7 +137,7 @@ export class GridBattleController {
 
   private inspectBlock(block: TroopBlock): void {
     this.inspectedBlockId = block.id;
-    if (!this.pendingOrder) requiredElement("grid-action-help").textContent = "Inspecting only. Press Esc or click one of your formations to return.";
+    if (!this.pendingOrder) requiredElement("grid-action-help").textContent = "Inspecting only: buttons still command your selected formation. Press Esc or click one of your formations to return.";
     this.renderAll();
   }
 

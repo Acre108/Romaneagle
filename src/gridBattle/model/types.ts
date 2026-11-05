@@ -227,6 +227,17 @@ export type GameEventType =
   | "trigger_ai_activated"
   | "trigger_failed";
 
+/** What an event means, for code that reacts to it. `message` is only ever shown to the player. */
+export type GameEventDetail =
+  | { kind: "engaged_order"; order: "battle" | "press" }
+  | { kind: "step" }
+  | { kind: "charge" }
+  | { kind: "flight" }
+  | { kind: "final_facing"; facing: Direction }
+  | { kind: "turned"; facing: Direction }
+  | { kind: "regrouped" }
+  | { kind: "leader_repositioned" };
+
 export interface GameEvent {
   id: number;
   type: GameEventType;
@@ -242,6 +253,7 @@ export interface GameEvent {
   departingBlocks?: BlockDeparture[];
   triggerId?: string;
   pressureResult?: PressureResult;
+  detail?: GameEventDetail;
 }
 
 export interface TriggerInteraction {

@@ -20,7 +20,7 @@ describe("the battle log", () => {
       event(4, "block_damaged", "great-warband-b14 suffered 2 damage and lost 2 models (melee).", { formationIds: ["great-warband"], casualties: 2 }),
       event(5, "block_damaged", "R-I-b2 suffered 1 damage and lost 1 model (counterattack).", { formationIds: ["R-I"], casualties: 1 }),
       event(6, "morale_shock", "Great Warband lost 2 morale: pushed back.", { formationIds: ["great-warband"] }),
-      event(7, "engaged_order_resolved", "I Cohort · Prima chose to press; 2 blocks fought.", { formationIds: ["R-I"] }),
+      event(7, "engaged_order_resolved", "I Cohort · Prima chose to press; 2 blocks fought.", { formationIds: ["R-I"], detail: { kind: "engaged_order", order: "press" } }),
       event(8, "activation_ended", "I Cohort · Prima ended its activation.", { formationIds: ["R-I"] }),
     ], NAMES);
 
@@ -29,6 +29,16 @@ describe("the battle log", () => {
       details: ["Great Warband: pushed ×2.", "Lost: Great Warband 4, I Cohort · Prima 1."],
       moraleNotes: ["Great Warband lost 2 morale: pushed back."],
     });
+  });
+
+  it("does not depend on how a message is worded", () => {
+    const [entry] = battleLogEntries([
+      event(1, "formation_moved", "Reworded advance.", { formationIds: ["R-I"], detail: { kind: "step" } }),
+      event(2, "formation_moved", "Reworded advance.", { formationIds: ["R-I"], detail: { kind: "step" } }),
+      event(3, "formation_rotated", "Reworded finish.", { formationIds: ["R-I"], detail: { kind: "final_facing", facing: "east" } }),
+      event(4, "activation_ended", "I Cohort · Prima ended its activation.", { formationIds: ["R-I"] }),
+    ], NAMES);
+    expect(entry?.headline).toBe("I Cohort · Prima moved 2 squares, facing east.");
   });
 
   it("never shows a raw block ID", () => {
@@ -42,9 +52,9 @@ describe("the battle log", () => {
 
   it("collapses repeated steps into one movement line with the final facing", () => {
     const [entry] = battleLogEntries([
-      event(1, "formation_moved", "I Cohort · Prima moved west.", { formationIds: ["R-I"] }),
-      event(2, "formation_moved", "I Cohort · Prima moved west.", { formationIds: ["R-I"] }),
-      event(3, "formation_rotated", "I Cohort · Prima finished its move facing north.", { formationIds: ["R-I"] }),
+      event(1, "formation_moved", "I Cohort · Prima moved west.", { formationIds: ["R-I"], detail: { kind: "step" } }),
+      event(2, "formation_moved", "I Cohort · Prima moved west.", { formationIds: ["R-I"], detail: { kind: "step" } }),
+      event(3, "formation_rotated", "I Cohort · Prima finished its move facing north.", { formationIds: ["R-I"], detail: { kind: "final_facing", facing: "north" } }),
       event(4, "activation_ended", "I Cohort · Prima ended its activation.", { formationIds: ["R-I"] }),
     ], NAMES);
     expect(entry?.headline).toBe("I Cohort · Prima moved 2 squares, facing north.");
@@ -60,9 +70,9 @@ describe("the battle log", () => {
 
   it("leads with the order, not a regroup or a rout that happened around it", () => {
     const [entry] = battleLogEntries([
-      event(1, "formation_moved", "Great Warband – Main Body fled 4 squares.", { formationIds: ["great-warband"] }),
-      event(2, "formation_merged", "Great Warband regrouped from 3 bodies into 1.", { formationIds: ["great-warband"] }),
-      event(3, "formation_moved", "I Cohort · Prima charged 2 squares.", { formationIds: ["R-I"] }),
+      event(1, "formation_moved", "Great Warband – Main Body fled 4 squares.", { formationIds: ["great-warband"], detail: { kind: "flight" } }),
+      event(2, "formation_merged", "Great Warband regrouped from 3 bodies into 1.", { formationIds: ["great-warband"], detail: { kind: "regrouped" } }),
+      event(3, "formation_moved", "I Cohort · Prima charged 2 squares.", { formationIds: ["R-I"], detail: { kind: "charge" } }),
       event(4, "activation_ended", "I Cohort · Prima ended its activation.", { formationIds: ["R-I"] }),
     ], NAMES);
     expect(entry).toEqual({

@@ -137,6 +137,7 @@ export function automaticallyMergeTouchingOriginalUnits(state: GameState, emitSu
       emitEvent(state, "formation_merged", `${originalName} regrouped from ${before} bodies into ${survivors.length}.`, {
         blockIds: survivors.flatMap((formation) => formation.blockIds),
         formationIds: [...survivors.map((formation) => formation.id), ...(absorbedIds.get(familyId) ?? [])],
+        detail: { kind: "regrouped" },
       });
     }
   }
@@ -270,6 +271,7 @@ export function resolveEndActivationRegrouping(state: GameState, activatedFormat
     if (startingCount > 1 && survivor) {
       emitEvent(state, "formation_merged", `${originalName} regrouped from ${startingCount} bodies into 1.`, {
         blockIds: [...survivor.blockIds], formationIds: [survivor.id],
+        detail: { kind: "regrouped" },
       });
     }
     return;

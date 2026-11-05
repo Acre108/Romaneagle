@@ -1043,6 +1043,7 @@ function translateChargingFormation(state: GameState, formationId: string, previ
   applyTerrainOverflow(state, overflow);
   emitEvent(state, "formation_moved", `${formation.name} charged ${preview.distance} ${preview.distance === 1 ? "square" : "squares"}${preview.reordered ? " in a reordered formation" : ""}.`, {
     blockIds: [...formation.blockIds], formationIds: [formation.id],
+    detail: { kind: "charge" },
   });
   return true;
 }

@@ -725,10 +725,11 @@ export class BattlefieldRenderer {
         charge: false,
       };
     }
+    const charge = event.detail?.kind === "charge";
     return {
-      durationMs: event.message.includes("charged") ? BALANCE.animationMs.charge * 3 : BALANCE.animationMs.move,
+      durationMs: charge ? BALANCE.animationMs.charge * 3 : BALANCE.animationMs.move,
       delayMs: 0,
-      charge: event.message.includes("charged"),
+      charge,
     };
   }
 

@@ -521,6 +521,7 @@ function resolveEngagedContacts(
     emitEvent(state, "engaged_order_resolved", `${formation.name} chose to ${order}; ${resolved} block${resolved === 1 ? "" : "s"} fought and ${counterattacks} defender${counterattacks === 1 ? "" : "s"} counterattacked${groupDescription}.`, {
       blockIds: participants.flatMap((candidate) => candidate.blockIds),
       formationIds: participants.map((candidate) => candidate.id),
+      detail: { kind: "engaged_order", order },
     });
   }
   return resolved;

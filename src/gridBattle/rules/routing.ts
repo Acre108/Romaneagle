@@ -343,6 +343,7 @@ export function resolveRoutingFormationActivation(state: GameState, formationId:
       blockIds: blocks.map((block) => block.id),
       formationIds: family.map((formation) => formation.id),
       departingBlocks: departures,
+      detail: { kind: "flight" },
     });
   }
   const hasLeader = familyHasLivingLeader(state, family);

@@ -4,7 +4,7 @@ export function emitEvent(
   state: GameState,
   type: GameEventType,
   message: string,
-  detail: Pick<GameEvent, "blockIds" | "formationIds" | "position" | "sourcePosition" | "sourcePositions" | "targetPositions" | "projectileKind" | "casualties" | "departingBlocks" | "triggerId" | "pressureResult"> = {},
+  detail: Pick<GameEvent, "blockIds" | "formationIds" | "position" | "sourcePosition" | "sourcePositions" | "targetPositions" | "projectileKind" | "casualties" | "departingBlocks" | "triggerId" | "pressureResult" | "detail"> = {},
 ): GameEvent {
   const event: GameEvent = { id: state.nextEventId++, type, message, ...detail };
   state.eventLog.push(event);

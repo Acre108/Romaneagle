@@ -58,57 +58,83 @@ function squares(count: number): string {
   return `${count} ${count === 1 ? "square" : "squares"}`;
 }
 
-/** Turns one activation's raw events into a line a player can read. */
-function summarise(events: readonly GameEvent[], names: ReadonlyMap<string, string>): BattleLogEntry | null {
-  const headlines: string[] = [];
-  const details: string[] = [];
-  const moraleNotes: string[] = [];
-  const losses = new Map<string, number>();
-  const results = new Map<string, Map<PressureResult, number>>();
-  const steps = new Map<string, number>();
-  const finalFacing = new Map<string, string>();
-  let actor: string | null = null;
+interface ActivationTally {
+  headlines: string[];
+  details: string[];
+  moraleNotes: string[];
+  losses: Map<string, number>;
+  results: Map<string, Map<PressureResult, number>>;
+  steps: Map<string, number>;
+  finalFacing: Map<string, string>;
+  actor: string | null;
+}
 
-  for (const event of events) {
-    const formationId = event.formationIds?.[0];
-    if (event.type === "activation_ended" && formationId) actor = formationId;
-    else if (event.type === "engaged_order_resolved" && formationId) {
-      const order = /chose to (battle|press)/.exec(event.message)?.[1];
-      if (order) headlines.push(`${formationName(names, formationId)} ${order === "press" ? "pressed" : "fought a Battle"}.`);
-      else headlines.push(withFormationNames(event.message, names));
-    } else if (event.type === "formation_moved" && formationId) {
-      if (/ moved (north|east|south|west)\.$/.test(event.message)) {
-        const key = originalFormationId(formationId);
-        steps.set(key, (steps.get(key) ?? 0) + 1);
-      } else if (/ charged /.test(event.message)) {
-        headlines.push(withFormationNames(event.message, names));
-      } else if (/ fled /.test(event.message)) {
-        moraleNotes.push(withFormationNames(event.message, names));
+function addToCount<K>(counts: Map<K, number>, key: K, amount: number): void {
+  counts.set(key, (counts.get(key) ?? 0) + amount);
+}
+
+/** Events with no special handling: the morale and reported sets decide where their message goes. */
+function recordPlainEvent(tally: ActivationTally, event: GameEvent, named: string): void {
+  if (MORALE_EVENTS.has(event.type)) tally.moraleNotes.push(named);
+  else if (REPORTED_EVENTS.has(event.type) && event.detail?.kind !== "leader_repositioned") tally.details.push(named);
+}
+
+function recordEvent(tally: ActivationTally, event: GameEvent, names: ReadonlyMap<string, string>): void {
+  const formationId = event.formationIds?.[0];
+  const named = withFormationNames(event.message, names);
+  const detail = event.detail;
+  switch (event.type) {
+    case "activation_ended":
+      if (formationId) tally.actor = formationId;
+      else recordPlainEvent(tally, event, named);
+      return;
+    case "engaged_order_resolved":
+      if (!formationId) recordPlainEvent(tally, event, named);
+      else if (detail?.kind === "engaged_order") tally.headlines.push(`${formationName(names, formationId)} ${detail.order === "press" ? "pressed" : "fought a Battle"}.`);
+      else tally.headlines.push(named);
+      return;
+    case "formation_moved":
+      if (!formationId) recordPlainEvent(tally, event, named);
+      else if (detail?.kind === "step") addToCount(tally.steps, originalFormationId(formationId), 1);
+      else if (detail?.kind === "charge") tally.headlines.push(named);
+      else if (detail?.kind === "flight") tally.moraleNotes.push(named);
+      return;
+    case "formation_rotated":
+      if (!formationId) recordPlainEvent(tally, event, named);
+      else if (detail?.kind === "turned") tally.headlines.push(`${formationName(names, formationId)} turned to face ${detail.facing}.`);
+      else if (detail?.kind === "final_facing") tally.finalFacing.set(originalFormationId(formationId), detail.facing);
+      return;
+    case "formation_merged":
+      if (detail?.kind === "regrouped") tally.details.push(named);
+      else tally.headlines.push(named);
+      return;
+    case "ranged_volley":
+    case "formation_braced":
+      tally.headlines.push(named);
+      return;
+    case "block_damaged":
+      if (formationId && event.casualties) addToCount(tally.losses, originalFormationId(formationId), event.casualties);
+      else recordPlainEvent(tally, event, named);
+      return;
+    case "pressure_applied": {
+      const targetBlockId = event.blockIds?.[1];
+      if (!event.pressureResult || !targetBlockId) {
+        recordPlainEvent(tally, event, named);
+        return;
       }
-    } else if (event.type === "formation_rotated" && formationId) {
-      const facing = /facing (north|east|south|west)\.$/.exec(event.message)?.[1];
-      const turned = /turned to face (north|east|south|west)\.$/.exec(event.message)?.[1];
-      if (turned) headlines.push(`${formationName(names, formationId)} turned to face ${turned}.`);
-      else if (facing) finalFacing.set(originalFormationId(formationId), facing);
-    } else if (event.type === "formation_merged" && event.message.includes("regrouped")) {
-      details.push(withFormationNames(event.message, names));
-    } else if (event.type === "ranged_volley" || event.type === "formation_braced" || event.type === "formation_merged") {
-      headlines.push(withFormationNames(event.message, names));
-    } else if (event.type === "block_damaged" && formationId && event.casualties) {
-      const key = originalFormationId(formationId);
-      losses.set(key, (losses.get(key) ?? 0) + event.casualties);
-    } else if (event.type === "pressure_applied" && event.pressureResult && event.blockIds?.[1]) {
-      const key = blockFormationId(event.blockIds[1]);
-      const tally = results.get(key) ?? new Map<PressureResult, number>();
-      tally.set(event.pressureResult, (tally.get(event.pressureResult) ?? 0) + 1);
-      results.set(key, tally);
-    } else if (MORALE_EVENTS.has(event.type)) {
-      moraleNotes.push(withFormationNames(event.message, names));
-    } else if (REPORTED_EVENTS.has(event.type) && !event.message.includes("moved to the new centre")) {
-      details.push(withFormationNames(event.message, names));
+      const key = blockFormationId(targetBlockId);
+      const counts = tally.results.get(key) ?? new Map<PressureResult, number>();
+      addToCount(counts, event.pressureResult, 1);
+      tally.results.set(key, counts);
+      return;
     }
+    default:
+      recordPlainEvent(tally, event, named);
   }
+}
 
+function composeEntry(tally: ActivationTally, names: ReadonlyMap<string, string>): BattleLogEntry | null {
+  const { headlines, details, moraleNotes, losses, results, steps, finalFacing, actor } = tally;
   for (const [key, count] of steps) {
     const facing = finalFacing.get(key);
     headlines.unshift(`${formationName(names, key)} moved ${squares(count)}${facing ? `, facing ${facing}` : ""}.`);
@@ -116,9 +142,9 @@ function summarise(events: readonly GameEvent[], names: ReadonlyMap<string, stri
   if (headlines.length === 0 && actor && details.length === 0 && moraleNotes.length === 0 && losses.size === 0) {
     headlines.push(`${formationName(names, actor)} held its ground.`);
   }
-  for (const [key, tally] of results) {
+  for (const [key, tallyByResult] of results) {
     const words = RESULT_WORDS.flatMap(([result, word]) => {
-      const count = tally.get(result) ?? 0;
+      const count = tallyByResult.get(result) ?? 0;
       return count > 0 ? [`${word} ×${count}`] : [];
     });
     details.unshift(`${formationName(names, key)}: ${words.join(", ")}.`);
@@ -133,6 +159,22 @@ function summarise(events: readonly GameEvent[], names: ReadonlyMap<string, stri
     details: [...headlines, ...details],
     moraleNotes: moraleNotes.filter((note) => note !== headline),
   };
+}
+
+/** Turns one activation's raw events into a line a player can read. */
+function summarise(events: readonly GameEvent[], names: ReadonlyMap<string, string>): BattleLogEntry | null {
+  const tally: ActivationTally = {
+    headlines: [],
+    details: [],
+    moraleNotes: [],
+    losses: new Map(),
+    results: new Map(),
+    steps: new Map(),
+    finalFacing: new Map(),
+    actor: null,
+  };
+  for (const event of events) recordEvent(tally, event, names);
+  return composeEntry(tally, names);
 }
 
 /** The battle so far, newest first, one entry per activation. */

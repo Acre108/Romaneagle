@@ -44,6 +44,7 @@ import { MapEditor } from "./mapEditor/MapEditor";
 import {
   listProjectMaps,
   loadProjectMap,
+  savedMapsStatus,
   type ProjectMapSummary,
 } from "./mapEditor/MapStorage";
 
@@ -692,11 +693,9 @@ async function openSavedMapBrowser(): Promise<void> {
   list.replaceChildren();
   status.textContent = "Reading public/maps…";
   try {
-    const maps = await listProjectMaps();
+    const { maps, unreadable } = await listProjectMaps();
     list.replaceChildren(...maps.map(savedMapCard));
-    status.textContent = maps.length === 0
-      ? "No saved maps yet. Create one in the map editor, then choose Save to project."
-      : `${maps.length} saved ${maps.length === 1 ? "map" : "maps"} available.`;
+    status.textContent = savedMapsStatus(maps, unreadable);
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Saved maps could not be listed.";
     status.textContent = `${detail} Project-folder loading requires PLAY_GAME.cmd or npm run dev.`;

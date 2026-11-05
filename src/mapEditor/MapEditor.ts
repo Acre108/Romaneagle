@@ -48,6 +48,7 @@ import {
   getUnitArchetype,
   type UnitArchetypeId,
 } from "../units/UnitArchetypes";
+import { MapEditHistory } from "./MapEditHistory";
 import { ProjectMapConflictError, projectMapFileName, saveProjectMap } from "./MapStorage";
 
 export const MINIMUM_EDITOR_MAP_SIZE = 4;
@@ -153,6 +154,73 @@ export function applyMapEditorTool(
   removeMapSpawnPoint(map, position);
 }
 
+/** Removes whatever the selected tool paints from a tile, and describes what happened. */
+export function eraseMapEditorLayer(
+  map: BattlefieldMap,
+  position: GridPosition,
+  tool: MapEditorTool,
+  edge: { position: GridPosition; direction: Direction } | null,
+): string {
+  const at = `${position.x}, ${position.y}`;
+  switch (tool.kind) {
+    case "unit":
+    case "erase-unit":
+      return removeMapDeploymentBlock(map, position) ? `Removed the unit block at ${at}.` : `No unit block at ${at}.`;
+    case "spawn":
+    case "erase-spawn":
+      return removeMapSpawnPoint(map, position) ? `Removed the spawnpoint at ${at}.` : `No spawnpoint at ${at}.`;
+    case "ramp":
+    case "erase-ramp":
+      setMapRamp(map, position, undefined);
+      return `Removed the ramp at ${at}.`;
+    case "building":
+    case "erase-building": {
+      const buildingId = map.buildingCells[`${position.x},${position.y}`]?.buildingId;
+      if (!buildingId) return `No building occupies ${at}.`;
+      removeMapBuilding(map, buildingId);
+      return `Removed ${buildingId}.`;
+    }
+    case "edge":
+    case "erase-edge":
+      if (!edge) return "Right-click nearer a tile edge.";
+      return removeMapEdgeFeature(map, edge.position, edge.direction)
+        ? `Removed the ${edge.direction} edge at ${edge.position.x}, ${edge.position.y}.`
+        : `No edge object occupies that ${edge.direction} boundary.`;
+    case "elevation":
+    case "elevation-delta":
+      setMapElevation(map, position, 0);
+      return `Reset elevation at ${at} to 0.`;
+    case "object":
+    case "erase-objects": {
+      const hadObjects = (mapTileAt(map, position)?.objects?.length ?? 0) > 0;
+      clearMapTerrainObjects(map, position);
+      return hadObjects ? `Removed objects from ${at}.` : `No objects at ${at}.`;
+    }
+    case "terrain":
+    case "ground-texture":
+      setMapTerrain(map, position, "clear");
+      setMapGroundTexture(map, position, undefined);
+      return `Reset terrain at ${at} to clear ground.`;
+  }
+}
+
+/** Every tile a drag passes through, sharing sides so painted lines stay connected. */
+export function tilesAlongLine(from: GridPosition, to: GridPosition): GridPosition[] {
+  const distanceX = Math.abs(to.x - from.x);
+  const distanceY = Math.abs(to.y - from.y);
+  const stepX = Math.sign(to.x - from.x);
+  const stepY = Math.sign(to.y - from.y);
+  const tiles = [{ x: from.x, y: from.y }];
+  let walkedX = 0;
+  let walkedY = 0;
+  while (walkedX < distanceX || walkedY < distanceY) {
+    if ((2 * walkedX + 1) * distanceY < (2 * walkedY + 1) * distanceX) walkedX += 1;
+    else walkedY += 1;
+    tiles.push({ x: from.x + walkedX * stepX, y: from.y + walkedY * stepY });
+  }
+  return tiles;
+}
+
 export function mapEditorObjectCount(map: BattlefieldMap): number {
   let count = 0;
   for (const tile of map.tiles) count += tile.objects?.length ?? 0;
@@ -237,9 +305,19 @@ export class MapEditor {
   private readonly resizeObserver: ResizeObserver;
   private readonly windowEvents = new AbortController();
   private map = createBlankBattlefieldMap(16, 12);
-  /** The map revision that was last written out, and the project file this map belongs to. */
-  private savedRevision = 0;
+  /** Content comparison, so undoing back to the saved map reads as saved. */
+  private savedDocument = "";
+  private currentDocumentCache: { map: BattlefieldMap; revision: number; json: string } | null = null;
   private savedFileName: string | null = null;
+  private downloaded = false;
+  /** Changes whenever a different map is opened, so a slow save cannot claim to have saved it. */
+  private mapGeneration = 0;
+  private readonly history = new MapEditHistory();
+  private readonly undoButton: HTMLButtonElement;
+  private readonly redoButton: HTMLButtonElement;
+  private strokeStart: { document: ReturnType<typeof serializeBattlefieldMap>; revision: number } | null = null;
+  private lastPaintedTile: GridPosition | null = null;
+  private lastPaintedDirection: Direction | null = null;
   private tool: MapEditorTool = { kind: "ground-texture", terrain: "clear", texture: "grass" };
   private groundTextureCategory: GroundTerrainType | null = null;
   private unitFaction: FactionId = "roman";
@@ -273,6 +351,9 @@ export class MapEditor {
     this.buildingDepthInput = requiredDescendant(root, "#map-editor-building-depth");
     this.mapNameInput = requiredDescendant(root, "#map-editor-name");
     this.saveStateReadout = requiredDescendant(root, "#map-editor-save-state");
+    this.undoButton = requiredDescendant(root, "#map-editor-undo");
+    this.redoButton = requiredDescendant(root, "#map-editor-redo");
+    this.savedDocument = this.currentDocument();
     this.createPalettes();
     this.bindEvents();
     this.resizeObserver = new ResizeObserver(() => this.render());
@@ -291,19 +372,36 @@ export class MapEditor {
       || window.confirm("This map has unsaved changes that will be lost. Continue?");
   }
 
+  private currentDocument(): string {
+    const cached = this.currentDocumentCache;
+    if (cached?.map === this.map && cached.revision === this.map.revision) return cached.json;
+    const json = JSON.stringify(serializeBattlefieldMap(this.map));
+    this.currentDocumentCache = { map: this.map, revision: this.map.revision, json };
+    return json;
+  }
+
   private hasUnsavedChanges(): boolean {
-    return this.map.revision !== this.savedRevision;
+    return this.currentDocument() !== this.savedDocument;
+  }
+
+  /** A freshly opened map starts clean, with nothing to undo. */
+  private startNewMap(map: BattlefieldMap, fileName: string | null): void {
+    this.map = map;
+    this.savedDocument = this.currentDocument();
+    this.savedFileName = fileName;
+    this.downloaded = false;
+    this.mapGeneration += 1;
+    this.history.clear();
+    this.strokeStart = null;
+    this.hoveredTile = null;
+    this.hoveredEdge = null;
   }
 
   loadMap(map: BattlefieldMap, name: string, fileName: string): void {
-    this.map = map;
-    this.savedRevision = map.revision;
-    this.savedFileName = fileName;
+    this.startNewMap(map, fileName);
     this.mapNameInput.value = name;
     this.widthInput.value = String(map.width);
     this.heightInput.value = String(map.height);
-    this.hoveredTile = null;
-    this.hoveredEdge = null;
     this.updateInterface(`Loaded ${name} from the project maps folder.`);
   }
 
@@ -598,53 +696,64 @@ export class MapEditor {
         this.render();
       }
     });
-    this.canvas.addEventListener("contextmenu", (event) => {
+    this.canvas.addEventListener("contextmenu", (event) => this.handleContextMenu(event));
+    this.undoButton.addEventListener("click", () => this.undo());
+    this.redoButton.addEventListener("click", () => this.redo());
+    window.addEventListener("keydown", (event) => this.handleKeyDown(event), { signal: this.windowEvents.signal });
+  }
+
+  private handleKeyDown(event: KeyboardEvent): void {
+    if (this.root.hidden || !(event.ctrlKey || event.metaKey)) return;
+    if ((event.target as HTMLElement).matches("input, select, textarea")) return;
+    const key = event.key.toLowerCase();
+    if (key === "z" && !event.shiftKey) {
       event.preventDefault();
-      const position = this.tileAtPointer(event);
-      if (!position) return;
-      let message = `Removed objects from ${position.x}, ${position.y}.`;
-      if (this.tool.kind === "unit" || this.tool.kind === "erase-unit") {
-        removeMapDeploymentBlock(this.map, position);
-        message = `Removed the unit block at ${position.x}, ${position.y}.`;
-      } else if (this.tool.kind === "spawn" || this.tool.kind === "erase-spawn") {
-        removeMapSpawnPoint(this.map, position);
-        message = `Removed the spawnpoint at ${position.x}, ${position.y}.`;
-      } else if (this.tool.kind === "ramp" || this.tool.kind === "erase-ramp") {
-        setMapRamp(this.map, position, undefined);
-        message = `Removed the ramp at ${position.x}, ${position.y}.`;
-      } else if (this.tool.kind === "building" || this.tool.kind === "erase-building") {
-        const buildingId = this.map.buildingCells[`${position.x},${position.y}`]?.buildingId;
-        if (buildingId) removeMapBuilding(this.map, buildingId);
-        message = buildingId
-          ? `Removed ${buildingId}.`
-          : `No building occupies ${position.x}, ${position.y}.`;
-      } else if (this.tool.kind === "edge" || this.tool.kind === "erase-edge") {
-        const edge = this.edgeAtPointer(event);
-        if (!edge) return;
-        const removed = removeMapEdgeFeature(this.map, edge.position, edge.direction);
-        message = removed
-          ? `Removed the ${edge.direction} edge at ${edge.position.x}, ${edge.position.y}.`
-          : `No edge object occupies that ${edge.direction} boundary.`;
-      } else if (this.tool.kind === "elevation" || this.tool.kind === "elevation-delta") {
-        setMapElevation(this.map, position, 0);
-        message = `Reset elevation at ${position.x}, ${position.y} to 0.`;
-      } else {
-        clearMapTerrainObjects(this.map, position);
-      }
-      this.hoveredTile = position;
-      this.updateInterface(message);
-    });
+      this.undo();
+    } else if (key === "y" || (key === "z" && event.shiftKey)) {
+      event.preventDefault();
+      this.redo();
+    }
+  }
+
+  private undo(): void {
+    if (this.pointerDown) return;
+    const map = this.history.undo(this.map);
+    if (!map) return;
+    this.map = map;
+    this.updateInterface("Undid the last edit.");
+  }
+
+  private redo(): void {
+    if (this.pointerDown) return;
+    const map = this.history.redo(this.map);
+    if (!map) return;
+    this.map = map;
+    this.updateInterface("Redid the edit.");
+  }
+
+  private handleContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    const position = this.tileAtPointer(event);
+    if (!position || this.pointerDown) return;
+    const edge = this.tool.kind === "edge" || this.tool.kind === "erase-edge" ? this.edgeAtPointer(event) : null;
+    this.hoveredTile = position;
+    const before = serializeBattlefieldMap(this.map);
+    const revision = this.map.revision;
+    let message: string;
+    try {
+      message = eraseMapEditorLayer(this.map, position, this.tool, edge);
+    } catch (error) {
+      message = error instanceof Error ? error.message : "That edit could not be applied.";
+    }
+    if (this.map.revision !== revision) this.history.record(before);
+    this.updateInterface(message);
   }
 
   private createBlankMap(): void {
     const width = this.editorDimension(this.widthInput, "width");
     const height = this.editorDimension(this.heightInput, "height");
     if (width === null || height === null || !this.confirmDiscardChanges()) return;
-    this.map = createBlankBattlefieldMap(width, height);
-    this.savedRevision = this.map.revision;
-    this.savedFileName = null;
-    this.hoveredTile = null;
-    this.hoveredEdge = null;
+    this.startNewMap(createBlankBattlefieldMap(width, height), null);
     this.updateInterface(`Created a blank ${width} × ${height} battlefield.`);
   }
 
@@ -680,6 +789,9 @@ export class MapEditor {
     if (event.button !== 0) return;
     this.pointerDown = true;
     this.paintedCells.clear();
+    this.lastPaintedTile = null;
+    this.lastPaintedDirection = null;
+    this.strokeStart = { document: serializeBattlefieldMap(this.map), revision: this.map.revision };
     this.canvas.setPointerCapture(event.pointerId);
     this.applyAtPointer(event);
   }
@@ -701,27 +813,44 @@ export class MapEditor {
     this.pointerDown = false;
     this.paintedCells.clear();
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
+    const stroke = this.strokeStart;
+    this.strokeStart = null;
+    if (!stroke) return;
+    if (this.map.revision !== stroke.revision) this.history.record(stroke.document);
+    this.updateEditState();
   }
 
   private applyAtPointer(event: PointerEvent): void {
     const position = this.tileAtPointer(event);
-    if (!position) return;
+    if (!position) {
+      this.lastPaintedTile = null;
+      return;
+    }
     const edge = this.tool.kind === "edge" || this.tool.kind === "erase-edge"
       ? this.edgeAtPointer(event) : null;
-    const key = edge
-      ? `edge:${edgeFeaturePhysicalKey(edge.position, edge.direction)}`
-      : `${position.x},${position.y}`;
-    if (this.paintedCells.has(key)) return;
-    this.paintedCells.add(key);
+    const direction = edge?.direction ?? null;
+    // Pointer events skip tiles on a fast drag, so fill in the line since the last one.
+    const start = this.lastPaintedTile && direction === this.lastPaintedDirection ? this.lastPaintedTile : position;
+    let message: string | null = null;
+    for (const tile of tilesAlongLine(start, position)) {
+      const key = direction
+        ? `edge:${edgeFeaturePhysicalKey(tile, direction)}`
+        : `${tile.x},${tile.y}`;
+      if (this.paintedCells.has(key)) continue;
+      this.paintedCells.add(key);
+      try {
+        applyMapEditorTool(this.map, tile, this.tool, direction ?? undefined);
+        message = `${toolLabel(this.tool)} applied at ${tile.x}, ${tile.y}${direction ? ` ${direction} edge` : ""}.`;
+      } catch (error) {
+        message = error instanceof Error ? error.message : "That edit could not be applied.";
+      }
+    }
+    this.lastPaintedTile = position;
+    this.lastPaintedDirection = direction;
     this.hoveredTile = position;
     this.hoveredEdge = edge;
-    try {
-      applyMapEditorTool(this.map, position, this.tool, edge?.direction);
-      const edgeLabel = edge ? ` ${edge.direction} edge` : "";
-      this.updateInterface(`${toolLabel(this.tool)} applied at ${position.x}, ${position.y}${edgeLabel}.`);
-    } catch (error) {
-      this.updateInterface(error instanceof Error ? error.message : "That edit could not be applied.");
-    }
+    if (message) this.updateInterface(message);
+    else this.render();
   }
 
   private tileAtPointer(event: MouseEvent | PointerEvent): GridPosition | null {
@@ -767,14 +896,16 @@ export class MapEditor {
     ));
     this.formationReadout.textContent = String(this.map.deployments.length);
     this.spawnReadout.textContent = String(this.map.spawnPoints.length);
-    this.saveStateReadout.textContent = this.saveStateLabel();
+    this.updateEditState();
     this.render();
   }
 
-  private saveStateLabel(): string {
-    if (this.hasUnsavedChanges()) return "Unsaved changes";
-    if (this.savedFileName) return "Saved";
-    return this.map.revision > 0 ? "Downloaded" : "Blank map";
+  private updateEditState(): void {
+    this.saveStateReadout.textContent = this.hasUnsavedChanges() ? "Unsaved changes"
+      : this.savedFileName ? "Saved"
+        : this.downloaded ? "Downloaded" : "Blank map";
+    this.undoButton.disabled = !this.history.canUndo;
+    this.redoButton.disabled = !this.history.canRedo;
   }
 
   private render(): void {
@@ -1457,7 +1588,8 @@ export class MapEditor {
     anchor.download = projectMapFileName(this.mapNameInput.value);
     anchor.click();
     URL.revokeObjectURL(url);
-    this.savedRevision = this.map.revision;
+    this.savedDocument = this.currentDocument();
+    this.downloaded = true;
     this.updateInterface(`Exported ${anchor.download}.`);
   }
 
@@ -1466,7 +1598,8 @@ export class MapEditor {
     this.updateInterface("Saving map to the project…");
     // Edits made while the request is in flight must still count as unsaved.
     const map = this.map;
-    const revision = map.revision;
+    const savedDocument = this.currentDocument();
+    const generation = this.mapGeneration;
     const name = this.mapNameInput.value;
     try {
       // Saving over the file this map came from is routine; any other existing file needs a yes.
@@ -1475,8 +1608,8 @@ export class MapEditor {
         this.updateInterface("Not saved. Choose a different map name, or save again to replace it.");
         return;
       }
-      if (this.map === map) {
-        this.savedRevision = revision;
+      if (this.mapGeneration === generation) {
+        this.savedDocument = savedDocument;
         this.savedFileName = saved.fileName;
         this.mapNameInput.value = saved.fileName.slice(0, -".json".length);
       }

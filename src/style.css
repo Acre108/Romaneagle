@@ -454,6 +454,9 @@ html[data-direct-file="true"] #launch-help {
 }
 .map-editor-canvas-caption > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .map-editor-canvas-caption b { color: #d9c585; }
+.map-editor-history { flex: none; display: flex; gap: 4px; }
+.map-editor-history button { padding: 3px 9px; color: #e6dcc0; font-size: 10px; background: #2a322a; border: 1px solid rgba(213,187,123,.35); cursor: pointer; }
+.map-editor-history button:disabled { opacity: .4; cursor: default; }
 .map-editor-summary { margin: 14px 0 0; }
 .map-editor-summary div {
   padding: 8px 0;

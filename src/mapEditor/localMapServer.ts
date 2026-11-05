@@ -78,6 +78,11 @@ function displayName(fileName: string): string {
     .join(" ");
 }
 
+export interface UnreadableProjectMap {
+  fileName: string;
+  reason: string;
+}
+
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
   response.statusCode = status;
   response.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -98,17 +103,26 @@ async function readRequestJson(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
 }
 
-async function projectMapSummaries(mapsDirectory: string): Promise<ProjectMapSummary[]> {
+/** Lists every map file, reporting the ones it cannot use rather than hiding them. */
+export async function readProjectMaps(
+  mapsDirectory: string,
+): Promise<{ maps: ProjectMapSummary[]; unreadable: UnreadableProjectMap[] }> {
   await mkdir(mapsDirectory, { recursive: true });
   const entries = await readdir(mapsDirectory, { withFileTypes: true });
-  const summaries = await Promise.all(entries
-    .filter((entry) => entry.isFile() && isSafeProjectMapFileName(entry.name))
-    .map(async (entry): Promise<ProjectMapSummary | null> => {
+  const maps: ProjectMapSummary[] = [];
+  const unreadable: UnreadableProjectMap[] = [];
+  await Promise.all(entries
+    .filter((entry) => entry.isFile() && extname(entry.name) === ".json")
+    .map(async (entry) => {
+      if (!isSafeProjectMapFileName(entry.name)) {
+        unreadable.push({ fileName: entry.name, reason: "filenames may only use lowercase letters, digits and hyphens" });
+        return;
+      }
       const path = join(mapsDirectory, entry.name);
       try {
         const [contents, details] = await Promise.all([readFile(path, "utf8"), stat(path)]);
         const map = parseBattlefieldMap(JSON.parse(contents) as unknown);
-        return {
+        maps.push({
           fileName: entry.name,
           name: displayName(entry.name),
           width: map.width,
@@ -117,14 +131,14 @@ async function projectMapSummaries(mapsDirectory: string): Promise<ProjectMapSum
           saxonFormations: map.deployments.filter((deployment) => deployment.factionId === "saxon").length,
           spawnPoints: map.spawnPoints.length,
           modifiedAt: details.mtime.toISOString(),
-        };
-      } catch {
-        return null;
+        });
+      } catch (error) {
+        unreadable.push({ fileName: entry.name, reason: error instanceof Error ? error.message : "it could not be read" });
       }
     }));
-  return summaries
-    .filter((summary): summary is ProjectMapSummary => summary !== null)
-    .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
+  maps.sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt) || left.fileName.localeCompare(right.fileName));
+  unreadable.sort((left, right) => left.fileName.localeCompare(right.fileName));
+  return { maps, unreadable };
 }
 
 function requestFileName(pathname: string): string | null {
@@ -153,7 +167,7 @@ export function localMapStoragePlugin(mapsDirectory: string): Plugin {
         }
         try {
           if (request.method === "GET" && url.pathname === MAP_API_PATH) {
-            sendJson(response, 200, { maps: await projectMapSummaries(mapsDirectory) });
+            sendJson(response, 200, await readProjectMaps(mapsDirectory));
             return;
           }
           const fileName = requestFileName(url.pathname);

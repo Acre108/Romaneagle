@@ -3,12 +3,13 @@ import {
   serializeBattlefieldMap,
   type BattlefieldMap,
 } from "../gridBattle/model/battlefieldMap";
-import type { ProjectMapSummary } from "./localMapServer";
+import type { ProjectMapSummary, UnreadableProjectMap } from "./localMapServer";
 
 const MAP_API_PATH = "/api/project-maps";
 
 interface ProjectMapListResponse {
   maps: ProjectMapSummary[];
+  unreadable: UnreadableProjectMap[];
 }
 
 interface ProjectMapSaveResponse {
@@ -44,9 +45,19 @@ async function responseJson<T>(response: Response): Promise<T> {
   return value;
 }
 
-export async function listProjectMaps(): Promise<ProjectMapSummary[]> {
+/** Describes the saved maps folder, naming any file that exists but cannot be used. */
+export function savedMapsStatus(maps: readonly unknown[], unreadable: readonly UnreadableProjectMap[]): string {
+  const available = maps.length === 0
+    ? "No saved maps yet. Create one in the map editor, then choose Save to project."
+    : `${maps.length} saved ${maps.length === 1 ? "map" : "maps"} available.`;
+  if (unreadable.length === 0) return available;
+  const details = unreadable.map((file) => `${file.fileName}: ${file.reason}`).join("; ");
+  return `${available} Could not read ${unreadable.length} ${unreadable.length === 1 ? "file" : "files"} in public/maps. ${details}.`;
+}
+
+export async function listProjectMaps(): Promise<ProjectMapListResponse> {
   const response = await fetch(MAP_API_PATH, { headers: { Accept: "application/json" } });
-  return (await responseJson<ProjectMapListResponse>(response)).maps;
+  return responseJson<ProjectMapListResponse>(response);
 }
 
 export async function loadProjectMap(fileName: string): Promise<BattlefieldMap> {

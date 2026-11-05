@@ -2022,6 +2022,9 @@ kbd { color: #c2a65f; font: 700 11px Inter, sans-serif; }
 .grid-order-confirm { margin-top: 8px; padding: 9px; border: 1px solid #9a7b3e; background: #29281d; }
 .grid-order-confirm strong { color: #f0d68f; font: 700 12px Georgia, serif; }
 .grid-order-confirm p { margin: 5px 0 8px; color: #b9b7aa; font-size: 9px; line-height: 1.4; }
+.grid-order-forecast { margin: 6px 0 0; padding: 0; list-style: none; color: #f0e6c8; font-size: 11px; line-height: 1.4; }
+.grid-order-forecast:empty { display: none; }
+.grid-order-forecast li + li { margin-top: 3px; }
 .grid-order-confirm > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .grid-order-confirm button { min-height: 31px; border: 1px solid #626653; border-radius: 3px; background: #292f27; color: #d9d5c7; font: 600 10px Inter, sans-serif; cursor: pointer; }
 .grid-order-confirm button:first-child { border-color: #b89448; background: #514329; color: #ffedb5; }

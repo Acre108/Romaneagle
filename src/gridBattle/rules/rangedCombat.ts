@@ -17,7 +17,8 @@ import { terrainAt, terrainElevationAt } from "../model/terrain";
 import { terrainDefinition } from "../model/terrainDefinitions";
 import { edgeFeaturesCrossed } from "../model/battlefieldMap";
 import { edgeFeatureDefinition } from "../model/edgeFeatureDefinitions";
-import { damageBlock } from "./combat";
+import { damageBlock, withMoraleOrder } from "./combat";
+import { combatForecast } from "./combatPreview";
 import { directionVector, formationEdgeType } from "./direction";
 import { formationIsEngaged } from "./engagement";
 import { effectiveBlockFacing } from "./blockFacing";
@@ -403,8 +404,11 @@ export function rangedConfirmationPreview(
   const formation = state.formations[formationId];
   const defender = state.blocks[defenderId];
   if (!preview || !formation || !defender) return null;
+  const outcome = structuredClone(state);
+  resolveRangedVolley(outcome, formationId, defenderId);
   return {
     kind: "combat",
+    forecast: combatForecast(state, [outcome]),
     title: `Confirm ${preview.weaponLabel.toLowerCase()} volley`,
     detail: `${preview.firingBlockCount} of ${preview.totalBlockCount} formation blocks hit ${preview.impactCount} target blocks. Spend 1 of ${preview.ammunition} remaining ammunition; shields block a deterministic share of frontal lanes.`,
     tiles: preview.impacts.map((impact) => ({
@@ -456,8 +460,10 @@ export function resolveRangedVolley(
     projectileKind: preview.projectileKind,
     casualties: preview.casualties,
   });
-  for (const impact of preview.impacts) {
-    damageBlock(state, impact.targetBlockId, impact.damage, `${preview.weaponLabel.toLowerCase()} volley`);
-  }
+  withMoraleOrder(state, () => {
+    for (const impact of preview.impacts) {
+      damageBlock(state, impact.targetBlockId, impact.damage, `${preview.weaponLabel.toLowerCase()} volley`);
+    }
+  });
   return { ok: true };
 }

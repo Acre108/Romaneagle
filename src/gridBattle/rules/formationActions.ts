@@ -46,13 +46,7 @@ export function reformBlock(state: GameState, blockId: string, destination: Grid
   clearFormationBrace(state, formation.id);
   block.engagementFacing = undefined;
   block.position = { ...destination };
-  block.disorder = Math.max(0, block.disorder - 1);
   const overflowIds = applyTerrainOverflow(state, overflow);
-  for (const neighbourPosition of orthogonalNeighbours(block.position)) {
-    const neighbour = blocksAt(state, neighbourPosition).find((candidate) => candidate.formationId === formation.id);
-    const centurion = neighbour?.characterId ? state.characters[neighbour.characterId] : undefined;
-    if (centurion?.role === "centurion") block.disorder = Math.max(0, block.disorder - 1);
-  }
   formation.hasActivated = true;
   formation.movementRemaining = 0;
   emitEvent(state, "formation_moved", `${block.id} reformed into a new position.`, {
@@ -121,7 +115,7 @@ export function mergeFormations(state: GameState, firstId: string, secondId: str
   if (keeper.unit.rangedWeaponId) {
     keeper.ammunition = (keeper.ammunition ?? 0) + (absorbed.ammunition ?? 0);
   }
-  keeper.status = keeper.cohesion <= 0 ? "routed" : keeper.cohesion <= 3 ? "disordered" : "formed";
+  keeper.status = keeper.cohesion <= 0 ? "routed" : keeper.cohesion <= 3 ? "breaking" : "formed";
   keeper.isBraced = false;
   keeper.hasActivated = true;
   keeper.movementRemaining = 0;

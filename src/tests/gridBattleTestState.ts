@@ -64,7 +64,7 @@ export function addFormation(
       models: 9,
       modelCapacity: 9,
       wounds: 0,
-      disorder: 0,
+      wavering: false,
       characterId: null,
       hasRetreatedThisRound: false,
       isContested: false,

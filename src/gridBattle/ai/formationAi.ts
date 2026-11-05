@@ -37,7 +37,7 @@ interface MovementNode {
   directions: Direction[];
   distance: number;
   engaged: boolean;
-  disorder: number;
+  wavering: number;
 }
 
 const MAX_MOVEMENT_SEARCH_STEPS = 12;
@@ -64,8 +64,8 @@ function nearestEnemyDistance(state: GameState, formation: Formation): number {
   return nearest;
 }
 
-function formationDisorder(state: GameState, formation: Formation): number {
-  return liveFormationBlocks(state, formation).reduce((sum, block) => sum + block.disorder, 0);
+function waveringBlockCount(state: GameState, formation: Formation): number {
+  return liveFormationBlocks(state, formation).filter((block) => block.wavering).length;
 }
 
 function selectionStep(state: GameState, formation: Formation): AiCommandStep | null {
@@ -97,7 +97,7 @@ function planSignature(state: GameState, formationId: string): string {
 function compareMovementNodes(left: MovementNode, right: MovementNode): number {
   return Number(right.engaged) - Number(left.engaged)
     || left.distance - right.distance
-    || left.disorder - right.disorder
+    || left.wavering - right.wavering
     || right.directions.length - left.directions.length
     || left.directions.map((direction) => CARDINAL_DIRECTIONS.indexOf(direction)).join("")
       .localeCompare(right.directions.map((direction) => CARDINAL_DIRECTIONS.indexOf(direction)).join(""));
@@ -111,7 +111,7 @@ function searchMovement(initialState: GameState, formationId: string): MovementN
     directions: [],
     distance: nearestEnemyDistance(initialState, initialFormation),
     engaged: formationIsEngaged(initialState, formationId),
-    disorder: formationDisorder(initialState, initialFormation),
+    wavering: waveringBlockCount(initialState, initialFormation),
   };
   let best = initial;
   let frontier = [initial];
@@ -135,7 +135,7 @@ function searchMovement(initialState: GameState, formationId: string): MovementN
           directions: [...node.directions, direction],
           distance: nearestEnemyDistance(simulated, movedFormation),
           engaged: formationIsEngaged(simulated, formationId),
-          disorder: formationDisorder(simulated, movedFormation),
+          wavering: waveringBlockCount(simulated, movedFormation),
         };
         next.push(candidate);
         if (compareMovementNodes(candidate, best) < 0) best = candidate;
@@ -172,8 +172,8 @@ function engagedOrder(state: GameState, formation: Formation): "battle" | "press
     .map((contact) => pressurePreview(state, contact.attackerId, contact.defenderId, { allowAnyContact: true }))
     .filter((preview) => preview !== null);
   const canForceRetreat = previews.some((preview) =>
-    preview.netPressure < BALANCE.chaoticRetreatPressureThreshold
-    && preview.netPressure + BALANCE.pressPressureBonus >= BALANCE.chaoticRetreatPressureThreshold);
+    preview.netPressure < BALANCE.battlePushPressureThreshold
+    && preview.netPressure + BALANCE.pressPressureBonus >= BALANCE.pushPressureThreshold);
   return formation.cohesion > BALANCE.breakingMoraleThreshold && canForceRetreat ? "press" : "battle";
 }
 

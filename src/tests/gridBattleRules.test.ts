@@ -198,7 +198,7 @@ describe("grid battle rules", () => {
     addFormation(state, "f", [{ x: 3, y: 2 }, { x: 3, y: 1 }, { x: 3, y: 0 }], "south", "saxon");
     expect(retreatBlock(state, "f-b1")).toBe("compressed");
     expect(state.blocks["f-b1"]!.models).toBe(8);
-    expect(state.blocks["f-b1"]!.disorder).toBe(2);
+    expect(state.blocks["f-b1"]!.wavering).toBe(true);
   });
 
   it("12. removing a central block splits a formation", () => {
@@ -285,7 +285,7 @@ describe("grid battle rules", () => {
     const state = createPrototypeGridScenario();
     state.formations.lanciarii!.isBraced = true;
     resolveCharge(state, "saxon-cavalry-b1", "lanciarii-b3");
-    expect(state.blocks["saxon-cavalry-b1"]?.models ?? 0).toBeLessThan(3);
+    expect(state.blocks["saxon-cavalry-b1"]?.wounds).toBeGreaterThan(0);
   });
 
   it("20a. does not apply the spear counter-charge ability without Brace", () => {
@@ -750,6 +750,7 @@ describe("grid battle rules", () => {
     state.formations.saxon!.unit.unitType = "heavy_infantry";
     state.formations.saxon!.unit.attack = 0;
     state.formations.roman!.unit.attack = 0;
+    state.formations.roman!.formationMode = "open";
 
     expect(resolveEngagedOrder(state, "saxon", "battle")).toBeGreaterThan(0);
 
@@ -813,7 +814,7 @@ describe("grid battle rules", () => {
     expect(press.blocks["roman-b1"]!.position).toEqual({ x: 3, y: 3 });
   });
 
-  it("38d. lets Battle inflict pressure without moving a line whose morale holds", () => {
+  it("38d. lets Battle make a line waver without moving it below its shove threshold", () => {
     const state = blankState();
     addFormation(state, "roman", [{ x: 3, y: 4 }], "north", "roman");
     addFormation(state, "saxon", [{ x: 3, y: 3 }], "south", "saxon");
@@ -824,10 +825,10 @@ describe("grid battle rules", () => {
     expect(resolveEngagedOrder(state, "roman", "battle")).toBe(1);
     expect(state.formations.saxon!.cohesion).toBe(8);
     expect(state.blocks["saxon-b1"]!.position).toEqual({ x: 3, y: 3 });
-    expect(state.blocks["saxon-b1"]!.disorder).toBeGreaterThan(0);
+    expect(state.blocks["saxon-b1"]!.wavering).toBe(true);
   });
 
-  it("38e. lets every Battle contact push once the defending formation loses morale", () => {
+  it("38e. lets Battle shove every contact that clears its higher threshold", () => {
     const state = blankState();
     addFormation(state, "roman", [
       { x: 2, y: 4 }, { x: 3, y: 4 }, { x: 4, y: 4 },
@@ -838,7 +839,7 @@ describe("grid battle rules", () => {
     state.formations.roman!.unit.unitType = "heavy_infantry";
     state.formations.roman!.unit.attack = 3;
     state.formations.saxon!.unit.attack = 0;
-    for (const defenderId of state.formations.saxon!.blockIds) state.blocks[defenderId]!.models = 7;
+    state.formations.saxon!.formationMode = "open";
 
     expect(resolveEngagedOrder(state, "roman", "battle")).toBe(3);
     expect(state.formations.saxon!.cohesion).toBeLessThan(8);
@@ -906,7 +907,7 @@ describe("grid battle rules", () => {
     const state = blankState();
     addFormation(state, "roman", [{ x: 3, y: 4 }, { x: 3, y: 5 }, { x: 3, y: 6 }], "north", "roman");
     addFormation(state, "saxon", [{ x: 3, y: 3 }], "south", "saxon");
-    state.blocks["roman-b2"]!.disorder = 2;
+    state.blocks["roman-b2"]!.wavering = true;
     expect(blockIsWavering(state, "roman-b2")).toBe(true);
     expect(resolveEngagedOrder(state, "roman", "press")).toBe(1);
     expect(state.blocks["roman-b1"]!.position).toEqual({ x: 3, y: 3 });
@@ -963,13 +964,13 @@ describe("grid battle rules", () => {
     addFormation(state, "enemy", [{ x: 3, y: 1 }, { x: 3, y: 2 }, { x: 3, y: 3 }, { x: 3, y: 4 }], "west", "saxon");
 
     applyTacticalMoraleShock(state, "target", ["enemy"], "side");
-    expect(state.formations.target!.cohesion).toBe(4);
+    expect(state.formations.target!.cohesion).toBe(5);
     applyTacticalMoraleShock(state, "target", ["enemy"], "rear");
-    expect(state.formations.target!.cohesion).toBe(4);
+    expect(state.formations.target!.cohesion).toBe(5);
 
     state.round += 1;
     applyTacticalMoraleShock(state, "target", ["enemy"], "front");
-    expect(state.formations.target!.cohesion).toBe(2);
+    expect(state.formations.target!.cohesion).toBe(4);
   });
 
   it("42e. keeps matched healthy infantry close after four full melee rounds", () => {
@@ -1268,7 +1269,7 @@ describe("grid battle rules", () => {
     addFormation(state, "saxon", [{ x: 3, y: 1 }], "south", "saxon");
     state.blocks["roman-b1"]!.models = 4;
     state.blocks["roman-b2"]!.models = 5;
-    state.blocks["roman-b2"]!.disorder = 2;
+    state.blocks["roman-b2"]!.wavering = true;
 
     refillFormationFront(state, "roman");
 

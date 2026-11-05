@@ -107,7 +107,7 @@ function spawnFormation(state: GameState, triggerId: string, spec: TriggerSpawnF
       models: capacity,
       modelCapacity: capacity,
       wounds: 0,
-      disorder: 0,
+      wavering: false,
       characterId: null,
       hasRetreatedThisRound: false,
       isContested: false,

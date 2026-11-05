@@ -4,7 +4,7 @@ import { emitEvent } from "../events/events";
 import { resolveContestedMelees, resolveDuels } from "./combat";
 import { refillFormationFront } from "./engagement";
 import { resolveEndActivationRegrouping } from "./regrouping";
-import { provisionalFormationFamily } from "./splitting";
+import { provisionalFormationFamily, recalculateFormationConnectivity } from "./splitting";
 import { disperseRemainingRoutedFormations, formationFamilyIsRouted, resolveAutomaticRoutingActivations } from "./routing";
 
 function eligible(state: GameState, factionId: FactionId): Formation[] {
@@ -32,6 +32,17 @@ export function canSelectFormation(state: GameState, formationId: string): boole
   return Boolean(formation && formation.factionId === state.activeFactionId
     && !formationFamilyIsRouted(state, formationId)
     && !provisionalFormationFamily(state, formationId).some((candidate) => candidate.hasActivated));
+}
+
+/** Wavering lasts through a formation's next activation; blocks still cut off waver again at once. */
+function steadyFormationFamily(state: GameState, formationId: string): void {
+  for (const formation of provisionalFormationFamily(state, formationId)) {
+    for (const blockId of formation.blockIds) {
+      const block = state.blocks[blockId];
+      if (block) block.wavering = false;
+    }
+    recalculateFormationConnectivity(state, formation.id);
+  }
 }
 
 function refillFactionFronts(state: GameState, factionId: FactionId): void {
@@ -91,6 +102,7 @@ export function endFormationActivation(state: GameState, formationId?: string): 
     formation.hasActivated = true;
     formation.movementRemaining = 0;
     emitEvent(state, "activation_ended", `${formation.name} ended its activation.`, { formationIds: [formation.id] });
+    steadyFormationFamily(state, formation.id);
     resolveEndActivationRegrouping(state, formation.id);
   }
   state.selectedFormationId = null;

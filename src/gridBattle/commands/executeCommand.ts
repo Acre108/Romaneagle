@@ -281,7 +281,7 @@ function executeCommandCore(
       formation.status = formation.provisionalFamilyId ? "fragment" : "formed";
       formation.routingActivations = undefined;
       formation.routingStalledActivations = undefined;
-      for (const blockId of formation.blockIds) if (state.blocks[blockId]) state.blocks[blockId]!.disorder = 0;
+      for (const blockId of formation.blockIds) if (state.blocks[blockId]) state.blocks[blockId]!.wavering = false;
       recalculateAllConnectivity(state);
       return { accepted: true };
     }

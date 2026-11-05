@@ -1,10 +1,10 @@
 import { emitEvent } from "../events/events";
 import { BALANCE } from "../model/config";
-import { blocksAt, inBounds } from "../model/occupancy";
+import { blocksAt, inBounds, positionKey } from "../model/occupancy";
 import { terrainAt, terrainBlocksVoluntaryMovement } from "../model/terrain";
 import type { BlockDeparture, Direction, FactionId, Formation, GameState, GridPosition, TroopBlock } from "../model/types";
 import { addPosition, directionVector, manhattanDistance, oppositeDirection } from "./direction";
-import { provisionalFormationFamily } from "./splitting";
+import { provisionalFormationFamily, recalculateFormationConnectivity } from "./splitting";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
 import { clearFormationBrace } from "./brace";
 
@@ -50,21 +50,44 @@ function nearestEnemyToCentre(blocks: readonly TroopBlock[], enemies: readonly T
     || a.id.localeCompare(b.id))[0];
 }
 
-function routeStepIsLegal(state: GameState, blocks: readonly TroopBlock[], direction: Direction): boolean {
+interface RouteRelocation {
+  block: TroopBlock;
+  origin: GridPosition;
+  destination: GridPosition;
+}
+
+interface RoutePlan {
+  relocations: RouteRelocation[];
+  /** Friendly blocks the routers pour through; each swaps to the square its router file vacates. */
+  displaced: RouteRelocation[];
+}
+
+function planRouteStep(state: GameState, blocks: readonly TroopBlock[], direction: Direction): RoutePlan | null {
   const movingIds = new Set(blocks.map((block) => block.id));
+  const movingAt = new Set(blocks.map((block) => positionKey(block.position)));
   const vector = directionVector(direction);
-  const relocations = blocks.map((block) => ({
-    block,
-    origin: { ...block.position },
-    destination: addPosition(block.position, vector),
-  }));
-  if (!relocations.every(({ destination }) => {
-    if (!inBounds(state, destination)) return true;
-    const terrain = terrainAt(state, destination)!;
-    if (terrainBlocksVoluntaryMovement(terrain)) return false;
-    return blocksAt(state, destination).every((occupant) => movingIds.has(occupant.id));
-  })) return false;
-  return planTerrainOverflow(state, relocations) !== null;
+  const behind = directionVector(oppositeDirection(direction));
+  const relocations: RouteRelocation[] = [];
+  const displaced: RouteRelocation[] = [];
+  for (const block of blocks) {
+    const destination = addPosition(block.position, vector);
+    relocations.push({ block, origin: { ...block.position }, destination });
+    if (!inBounds(state, destination)) continue;
+    if (terrainBlocksVoluntaryMovement(terrainAt(state, destination)!)) return null;
+    const occupants = blocksAt(state, destination).filter((occupant) => !movingIds.has(occupant.id));
+    if (occupants.length === 0) continue;
+    const friend = occupants[0]!;
+    if (occupants.length > 1 || friend.factionId !== block.factionId || friend.isContested
+      || (friend.formationId && formationFamilyIsRouted(state, friend.formationId))) return null;
+    let vacated = block.position;
+    while (movingAt.has(positionKey(addPosition(vacated, behind)))) vacated = addPosition(vacated, behind);
+    displaced.push({ block: friend, origin: { ...friend.position }, destination: { ...vacated } });
+  }
+  return planTerrainOverflow(state, [...relocations, ...displaced]) === null ? null : { relocations, displaced };
+}
+
+function routeStepIsLegal(state: GameState, blocks: readonly TroopBlock[], direction: Direction): boolean {
+  return planRouteStep(state, blocks, direction) !== null;
 }
 
 function routeDirection(
@@ -136,16 +159,13 @@ function moveRoutingStep(
   state: GameState,
   family: Formation[],
   direction: Direction,
-): { escapedBlocks: number; departures: BlockDeparture[] } {
+): { escapedBlocks: number; departures: BlockDeparture[]; shaken: TroopBlock[] } {
   const blocks = familyBlocks(state, family);
   for (const formation of family) clearFormationBrace(state, formation.id);
   const vector = directionVector(direction);
-  const relocations = blocks.map((block) => ({
-    block,
-    origin: { ...block.position },
-    destination: addPosition(block.position, vector),
-  }));
-  const overflow = planTerrainOverflow(state, relocations) ?? [];
+  const plan = planRouteStep(state, blocks, direction);
+  const displaced = plan?.displaced ?? [];
+  const overflow = plan ? planTerrainOverflow(state, [...plan.relocations, ...displaced]) ?? [] : [];
   const leaving = blocks.filter((block) => !inBounds(state, addPosition(block.position, vector)));
   const departures = leaving.map((block) => ({
     block: { ...block, position: { ...block.position } },
@@ -169,12 +189,18 @@ function moveRoutingStep(
     if (formation) formation.blockIds = formation.blockIds.filter((blockId) => blockId !== block.id);
     delete state.blocks[block.id];
   }
+  for (const { block, destination } of displaced) {
+    if (block.formationId) clearFormationBrace(state, block.formationId);
+    block.position = { ...destination };
+    block.engagementFacing = undefined;
+    block.wavering = true;
+  }
   applyTerrainOverflow(state, overflow);
   for (const formation of family) {
     formation.facing = direction;
     if (formation.blockIds.length === 0) delete state.formations[formation.id];
   }
-  return { escapedBlocks: leaving.length, departures };
+  return { escapedBlocks: leaving.length, departures, shaken: displaced.map(({ block }) => block) };
 }
 
 function familyHasLivingLeader(state: GameState, family: readonly Formation[]): boolean {
@@ -192,7 +218,7 @@ function rallyFamily(state: GameState, family: Formation[]): void {
     formation.routingStalledActivations = undefined;
     for (const blockId of formation.blockIds) {
       const block = state.blocks[blockId];
-      if (block) block.disorder = Math.max(0, block.disorder - 1);
+      if (block) block.wavering = false;
     }
   }
   emitEvent(state, "formation_rallied", `${family[0]!.name} rallied at ${BALANCE.ralliedMorale} morale.`, {
@@ -225,6 +251,22 @@ export function formationFamilyIsRouted(state: GameState, formationId: string): 
   return provisionalFormationFamily(state, formationId).some((formation) => formation.status === "routed");
 }
 
+function reportRoutersPouringThrough(state: GameState, routedName: string, shakenIds: ReadonlySet<string>): void {
+  if (shakenIds.size === 0) return;
+  const formationIds = new Set<string>();
+  for (const blockId of shakenIds) {
+    const formationId = state.blocks[blockId]?.formationId;
+    if (formationId) formationIds.add(formationId);
+  }
+  emitEvent(state, "formation_wavered", `${routedName} fled through friendly lines; ${shakenIds.size} block${shakenIds.size === 1 ? " is" : "s are"} wavering.`, {
+    blockIds: [...shakenIds],
+    formationIds: [...formationIds],
+  });
+  for (const formationId of formationIds) {
+    if (state.formations[formationId]) recalculateFormationConnectivity(state, formationId);
+  }
+}
+
 export function resolveRoutingFormationActivation(state: GameState, formationId: string): RoutingResult {
   const initialFormation = state.formations[formationId];
   if (!initialFormation) return { movedSteps: 0, escapedBlocks: 0, rallied: false, formationEscaped: true };
@@ -251,6 +293,7 @@ export function resolveRoutingFormationActivation(state: GameState, formationId:
   let escapedBlocks = 0;
   let movedSteps = 0;
   const departures: BlockDeparture[] = [];
+  const shakenIds = new Set<string>();
   let heading = routeDirection(
     state,
     familyBlocks(state, family),
@@ -273,9 +316,11 @@ export function resolveRoutingFormationActivation(state: GameState, formationId:
     const stepResult = moveRoutingStep(state, family, heading);
     escapedBlocks += stepResult.escapedBlocks;
     departures.push(...stepResult.departures);
+    for (const block of stepResult.shaken) shakenIds.add(block.id);
     movedSteps += 1;
   }
 
+  reportRoutersPouringThrough(state, startingName, shakenIds);
   family = family.filter((formation) => state.formations[formation.id]);
   if (family.length === 0) {
     emitEvent(state, "formation_escaped", `${startingName} fled from the battlefield and was removed from play.`, {

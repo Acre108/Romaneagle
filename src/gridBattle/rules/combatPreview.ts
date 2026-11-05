@@ -4,17 +4,19 @@ import type {
   GridPosition,
   OrderPreviewTile,
   PressurePreview,
+  PressureResult,
   TroopBlock,
 } from "../model/types";
 import { blockHitPoints } from "../model/unitStats";
 import { positionKey } from "../model/occupancy";
+import { originalFormationId } from "./splitting";
 
 function blockChanged(before: TroopBlock, after: TroopBlock | undefined): boolean {
   return !after
     || positionKey(before.position) !== positionKey(after.position)
     || before.models !== after.models
     || before.wounds !== after.wounds
-    || before.disorder !== after.disorder
+    || before.wavering !== after.wavering
     || before.formationId !== after.formationId
     || before.isContested !== after.isContested;
 }
@@ -61,6 +63,76 @@ interface TileAccumulator {
 export interface CombatOutcomePreview {
   tiles: OrderPreviewTile[];
   damage: CombatBlockDamagePreview[];
+  forecast: string[];
+}
+
+const RESULT_LABELS: readonly [PressureResult, string][] = [
+  ["scattered", "Scattered"], ["pushed", "Pushed"], ["wavers", "Wavers"], ["holds", "Holds"],
+];
+
+interface FamilyMorale {
+  morale: number;
+  routed: boolean;
+}
+
+function familyMorale(state: GameState, originalId: string): FamilyMorale {
+  const family = Object.values(state.formations).filter((formation) => originalFormationId(formation.id) === originalId);
+  if (family.length === 0) return { morale: 0, routed: true };
+  return {
+    morale: Math.max(...family.map((formation) => formation.cohesion)),
+    routed: family.some((formation) => formation.status === "routed"),
+  };
+}
+
+function moraleText(before: FamilyMorale, after: readonly FamilyMorale[]): string {
+  if (before.routed) return "Already routing";
+  const values = after.map((entry) => entry.morale);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const afterText = low === high ? String(low) : `${low}\u2013${high}`;
+  const routs = after.filter((entry) => entry.routed).length;
+  const verdict = routs === 0 ? "" : routs === after.length ? " \u00b7 ROUTS" : " \u00b7 may rout";
+  return low === before.morale && high === before.morale
+    ? `Morale ${before.morale}${verdict}`
+    : `Morale ${before.morale} \u2192 ${afterText}${verdict}`;
+}
+
+/**
+ * Says what an order will do to each formation in the words a player acts on. Result
+ * words come from the first outcome: pressure never depends on the defence roll.
+ */
+export function combatForecast(before: GameState, outcomes: readonly GameState[]): string[] {
+  if (outcomes.length === 0) return [];
+  const results = new Map<string, Map<PressureResult, number>>();
+  for (const event of outcomes[0]!.eventLog) {
+    if (event.id < before.nextEventId || !event.pressureResult) continue;
+    const defenderId = event.blockIds?.[1];
+    const formationId = defenderId ? before.blocks[defenderId]?.formationId : null;
+    if (!formationId) continue;
+    const originalId = originalFormationId(formationId);
+    const tally = results.get(originalId) ?? new Map<PressureResult, number>();
+    tally.set(event.pressureResult, (tally.get(event.pressureResult) ?? 0) + 1);
+    results.set(originalId, tally);
+  }
+  const originalIds = [...new Set(Object.keys(before.formations).map(originalFormationId))];
+  const rows: { enemy: boolean; text: string }[] = [];
+  for (const originalId of originalIds) {
+    const start = familyMorale(before, originalId);
+    const after = outcomes.map((outcome) => familyMorale(outcome, originalId));
+    const tally = results.get(originalId);
+    if (!tally && after.every((entry) => entry.morale === start.morale)) continue;
+    const member = Object.values(before.formations).find((formation) => originalFormationId(formation.id) === originalId)!;
+    const name = member.name.replace(/ \u2013 (Main Body|Fragment [A-Z]+)$/, "");
+    const words = RESULT_LABELS.flatMap(([result, label]) => {
+      const count = tally?.get(result) ?? 0;
+      return count > 0 ? [`${label} \u00d7${count}`] : [];
+    });
+    rows.push({
+      enemy: member.factionId !== before.activeFactionId,
+      text: [`${name}: ${moraleText(start, after)}`, words.join(", ")].filter(Boolean).join(" \u00b7 "),
+    });
+  }
+  return rows.sort((a, b) => Number(b.enemy) - Number(a.enemy)).map((row) => row.text);
 }
 
 /**
@@ -73,7 +145,7 @@ export function aggregateCombatOutcomes(
   involvedBlockIds: ReadonlySet<string>,
   mathByBlock: ReadonlyMap<string, readonly string[]>,
 ): CombatOutcomePreview {
-  if (outcomes.length === 0) return { tiles: [], damage: [] };
+  if (outcomes.length === 0) return { tiles: [], damage: [], forecast: [] };
   const candidateIds = new Set(involvedBlockIds);
   for (const block of Object.values(before.blocks)) {
     if (outcomes.some((outcome) => blockChanged(block, outcome.blocks[block.id]))) candidateIds.add(block.id);
@@ -158,5 +230,6 @@ export function aggregateCombatOutcomes(
   return {
     tiles: tiles.sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x || a.factionId.localeCompare(b.factionId)),
     damage: damage.sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x || a.factionId.localeCompare(b.factionId)),
+    forecast: combatForecast(before, outcomes),
   };
 }

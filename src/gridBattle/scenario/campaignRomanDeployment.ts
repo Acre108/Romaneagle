@@ -13,7 +13,7 @@ import type {
   UnitProfile,
   UnitType,
 } from "../model/types";
-import { modelCapacity } from "../model/unitStats";
+import { hitPointsPerModel, modelCapacity } from "../model/unitStats";
 
 interface DeploymentLayout {
   infantry: readonly (readonly GridPosition[])[];
@@ -68,18 +68,19 @@ function gridUnitType(archetype: UnitArchetypeProfile): UnitType {
   throw new Error(`Campaign unit ${archetype.id} cannot deploy in the grid battle.`);
 }
 
-function unitProfile(archetype: UnitArchetypeProfile): UnitProfile {
+function unitProfile(archetype: UnitArchetypeProfile, formationMode: FormationMode): UnitProfile {
   const unitType = gridUnitType(archetype);
   const equipment: EquipmentAbility[] = [];
   if (archetype.equipmentVisual.shield !== "none") equipment.push("shield_front");
   const rangedWeaponId = archetype.rangedWeapon?.id;
+  const modelSize = unitType === "light_cavalry" || unitType === "heavy_cavalry" ? 3 : 2;
   return {
     unitType,
-    modelSize: unitType === "light_cavalry" || unitType === "heavy_cavalry" ? 3 : 2,
+    modelSize,
     attack: unitType === "light_infantry" ? 2 : 3,
     armour: archetype.gameplay.armour.class === "heavy" ? 1 : 0,
     defence: 0,
-    hitPointsPerModel: 1,
+    hitPointsPerModel: hitPointsPerModel(formationMode, modelSize),
     movement: BALANCE.movement[unitType],
     equipment,
     ...(rangedWeaponId ? { rangedWeaponId } : {}),
@@ -139,7 +140,7 @@ function addFormation(
     blockIds: [],
     facing: "north",
     formationMode,
-    unit: unitProfile(archetype),
+    unit: unitProfile(archetype, formationMode),
     cohesion: Math.max(1, Math.min(10, Math.round(archetype.gameplay.morale.startingMorale / 10))),
     maxCohesion: 10,
     initialModelCount: definition.count,
@@ -167,7 +168,7 @@ function addFormation(
       models: Math.min(capacity, definition.count - index * capacity),
       modelCapacity: capacity,
       wounds: 0,
-      disorder: 0,
+      wavering: false,
       characterId: null,
       hasRetreatedThisRound: false,
       isContested: false,
@@ -264,7 +265,7 @@ export function applyTestRomanDeployment(
   for (const unit of units) {
     const archetype = getUnitArchetype(unit.archetypeId);
     const mode: FormationMode = archetype.type === "archers" ? "open" : "closed";
-    const capacity = Math.max(1, Math.floor(BALANCE.formationModelSpace[mode] / unitProfile(archetype).modelSize));
+    const capacity = Math.max(1, Math.floor(BALANCE.formationModelSpace[mode] / unitProfile(archetype, mode).modelSize));
     const blockCount = Math.ceil(unit.strength / capacity);
     const positions = testDeploymentFootprint(state, blockCount, true) ?? testDeploymentFootprint(state, blockCount, false);
     if (!positions) throw new Error(`The test battlefield has no room for ${unit.name}.`);

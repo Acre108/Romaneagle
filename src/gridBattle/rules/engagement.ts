@@ -4,10 +4,11 @@ import { terrainAt, terrainBlocksVoluntaryMovement } from "../model/terrain";
 import type { Direction, Formation, GameState, GridPosition, TroopBlock } from "../model/types";
 import { BALANCE } from "../model/config";
 import { addPosition, directionBetween, directionVector, formationEdgeType, manhattanDistance, oppositeDirection, orthogonalNeighbours, rotateDirection } from "./direction";
-import { applyTacticalMoraleShock, damageBlock, meleeDamagePreview, pressurePreview, resolvePressure } from "./combat";
+import { applyTacticalMoraleShock, damageBlock, meleeDamagePreview, pressurePreview, resolvePressure, withMoraleOrder } from "./combat";
 import { canTranslateFormation, formationBlocks, translateFormation, type RuleResult } from "./movement";
-import { originalFormationId, provisionalFormationFamily, recalculateFormationConnectivity } from "./splitting";
+import { provisionalFormationFamily, recalculateFormationConnectivity } from "./splitting";
 import { effectiveBlockFacing, faceFormationTowardNearestEnemies } from "./blockFacing";
+import { blockIsWavering } from "./wavering";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
 import { clearFormationBrace } from "./brace";
 import { advanceCombatFile } from "./fileAdvance";
@@ -17,6 +18,8 @@ export interface EngagedContact {
   defenderId: string;
 }
 
+export { blockIsWavering };
+
 function adjacentEnemy(state: GameState, block: TroopBlock): boolean {
   return block.isContested || orthogonalNeighbours(block.position)
     .some((position) => Boolean(enemyBlockAt(state, position, block.factionId)));
@@ -25,13 +28,6 @@ function adjacentEnemy(state: GameState, block: TroopBlock): boolean {
 export function formationIsEngaged(state: GameState, formationId: string): boolean {
   const formation = state.formations[formationId];
   return Boolean(formation && formationBlocks(state, formation).some((block) => adjacentEnemy(state, block)));
-}
-
-export function blockIsWavering(state: GameState, blockId: string): boolean {
-  const block = state.blocks[blockId];
-  const formation = block?.formationId ? state.formations[block.formationId] : undefined;
-  return Boolean(block && (block.disorder >= BALANCE.waveringDisorderThreshold
-    || (formation?.cohesion ?? 0) <= BALANCE.breakingMoraleThreshold));
 }
 
 function contactDirections(facing: Direction): Direction[] {
@@ -355,6 +351,15 @@ export function resolveEngagedOrder(
   order: "battle" | "press",
   previewOptions: { defenceRollOverride?: number } = {},
 ): number {
+  return withMoraleOrder(state, () => resolveEngagedContacts(state, formationId, order, previewOptions));
+}
+
+function resolveEngagedContacts(
+  state: GameState,
+  formationId: string,
+  order: "battle" | "press",
+  previewOptions: { defenceRollOverride?: number },
+): number {
   const formation = state.formations[formationId];
   if (!formation || !formationIsEngaged(state, formationId)) return 0;
   const participants = provisionalFormationFamily(state, formationId)
@@ -400,11 +405,6 @@ export function resolveEngagedOrder(
     if (priority[contactEdge] > priority[existing.worstContactEdge]) existing.worstContactEdge = contactEdge;
     tacticalShocks.set(key, existing);
   };
-  const moraleBaselines = new Map<string, number>();
-  for (const candidate of Object.values(state.formations)) {
-    const originalId = originalFormationId(candidate.id);
-    moraleBaselines.set(originalId, Math.max(moraleBaselines.get(originalId) ?? 0, candidate.cohesion));
-  }
   for (const contact of contacts) {
     const attacker = state.blocks[contact.attackerId];
     const defender = state.blocks[contact.defenderId];
@@ -440,7 +440,6 @@ export function resolveEngagedOrder(
     if (!attacker || !defender) return false;
     const attackerOrigin = { ...attacker.position };
     const defenderOrigin = { ...defender.position };
-    const defenderFormation = defender.formationId ? state.formations[defender.formationId] : undefined;
     const counter = !attacker.isContested && !defender.isContested && !counteredDefenders.has(defender.id)
       ? meleeDamagePreview(state, defender.id, attacker.id, previewOptions.defenceRollOverride)
       : null;
@@ -449,17 +448,15 @@ export function resolveEngagedOrder(
       pressureBonus: order === "press" ? BALANCE.pressPressureBonus : 0,
       damagePenalty: order === "press" ? BALANCE.pressDamagePenalty : 0,
       followUp: false,
-      retreatRequiresMoraleLoss: order === "battle",
-      retreatMoraleBaseline: defenderFormation
-        ? moraleBaselines.get(originalFormationId(defenderFormation.id))
-        : undefined,
+      pushThreshold: order === "battle" ? BALANCE.battlePushPressureThreshold : BALANCE.pushPressureThreshold,
       defenceRollOverride: previewOptions.defenceRollOverride,
     };
     if (!pressurePreview(state, contact.attackerId, contact.defenderId, options)) return false;
     const result = resolvePressure(state, contact.attackerId, contact.defenderId, options);
     if (!result.ok) return false;
     resolved += 1;
-    if (counter) {
+    const shovedAndSurvived = Boolean(state.blocks[defender.id]) && (result.vacated || result.compressed);
+    if (counter && !shovedAndSurvived) {
       counteredDefenders.add(defender.id);
       counterattacks += 1;
       emitEvent(
@@ -473,7 +470,7 @@ export function resolveEngagedOrder(
           casualties: counter.expectedCasualties,
         },
       );
-      damageBlock(state, attacker.id, counter.expectedCasualties, "counterattack");
+      damageBlock(state, attacker.id, counter.expectedDamage, "counterattack");
     }
     const survivingAttacker = state.blocks[contact.attackerId];
     if (result.vacated && survivingAttacker) {

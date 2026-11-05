@@ -2,7 +2,7 @@ import { getUnitArchetype, type UnitArchetypeProfile } from "../../units/UnitArc
 import { getRangedWeaponProfile } from "../../units/RangedWeapons";
 import { parseBattlefieldMap, serializeBattlefieldMap, type BattlefieldMap } from "../model/battlefieldMap";
 import { BALANCE } from "../model/config";
-import { modelCapacity } from "../model/unitStats";
+import { hitPointsPerModel, modelCapacity } from "../model/unitStats";
 import type {
   EquipmentAbility,
   Formation,
@@ -32,13 +32,14 @@ function unitProfile(archetype: UnitArchetypeProfile): UnitProfile {
   const equipment: EquipmentAbility[] = [];
   if (archetype.equipmentVisual.shield !== "none") equipment.push("shield_front");
   const rangedWeaponId = archetype.rangedWeapon?.id;
+  const modelSize = unitType === "light_cavalry" || unitType === "heavy_cavalry" ? 3 : 2;
   return {
     unitType,
-    modelSize: unitType === "light_cavalry" || unitType === "heavy_cavalry" ? 3 : 2,
+    modelSize,
     attack: unitType === "light_infantry" ? 2 : 3,
     armour: archetype.gameplay.armour.class === "heavy" ? 1 : 0,
     defence: 0,
-    hitPointsPerModel: 1,
+    hitPointsPerModel: hitPointsPerModel(formationMode(archetype), modelSize),
     movement: BALANCE.movement[unitType],
     equipment,
     ...(rangedWeaponId ? { rangedWeaponId } : {}),
@@ -101,7 +102,7 @@ export function createCustomMapScenario(source: BattlefieldMap): GameState {
         models: capacity,
         modelCapacity: capacity,
         wounds: 0,
-        disorder: 0,
+        wavering: false,
         characterId: null,
         hasRetreatedThisRound: false,
         isContested: false,

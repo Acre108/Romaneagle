@@ -108,6 +108,7 @@ function planAttack(state: GameState, command: Extract<GameCommand, { type: "att
       : "Highlighted tiles show blocks holding, retreating, or being removed. ! is certain; ? is possible. Hover for percentages.",
     tiles: outcomePreview.tiles,
     damage: outcomePreview.damage,
+    forecast: outcomePreview.forecast,
   });
 }
 
@@ -156,6 +157,7 @@ function planEngagedCombat(
       allowAnyContact: true,
       pressureBonus: command.type === "press" ? BALANCE.pressPressureBonus : 0,
       damagePenalty: command.type === "press" ? BALANCE.pressDamagePenalty : 0,
+      pushThreshold: command.type === "battle" ? BALANCE.battlePushPressureThreshold : BALANCE.pushPressureThreshold,
     });
     if (!preview) continue;
     appendMath(contact.attackerId, blockCombatMath(preview, "attacker"));
@@ -175,6 +177,7 @@ function planEngagedCombat(
       : "Highlighted tiles show contacts, retreats, removals, refills, and gap-closing blocks. ! is certain; ? is possible. Hover for percentages.",
     tiles: outcomePreview.tiles,
     damage: outcomePreview.damage,
+    forecast: outcomePreview.forecast,
   });
 }
 

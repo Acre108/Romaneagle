@@ -21,6 +21,7 @@ import type {
   GridPosition,
   OrderConfirmationPreview,
   PressurePreview,
+  PressureResult,
   RetreatMode,
   TroopBlock,
 } from "../model/types";
@@ -31,16 +32,16 @@ import {
   directionVector,
   facingContactModifier,
   formationEdgeType,
-  manhattanDistance,
   oppositeDirection,
   orthogonalNeighbours,
   rotateDirection,
 } from "./direction";
 import { formationBlocks, planFormationAdvance } from "./movement";
-import { provisionalFormationFamily, recalculateAllConnectivity, recalculateFormationConnectivity } from "./splitting";
+import { originalFormationId, provisionalFormationFamily, recalculateAllConnectivity, recalculateFormationConnectivity } from "./splitting";
 import { clearFormationEngagementFacings, effectiveBlockFacing } from "./blockFacing";
 import { clearBlockFormationBrace, clearFormationBrace } from "./brace";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
+import { blockIsBreaking, blockIsWavering } from "./wavering";
 import { advanceCombatFile } from "./fileAdvance";
 import { aggregateCombatOutcomes, blockCombatMath } from "./combatPreview";
 import {
@@ -52,14 +53,8 @@ import {
   isInfantry,
 } from "../model/unitStats";
 
-function formationCohesionModifier(cohesion: number): number {
-  if (cohesion >= 8) return 1;
-  if (cohesion <= 3) return -2;
-  return 0;
-}
-
-function disorderPenalty(disorder: number): number {
-  return Math.min(BALANCE.disorderPenaltyMaximum, Math.floor(disorder / 2));
+function waveringPenalty(state: GameState, blockId: string): number {
+  return blockIsWavering(state, blockId) ? BALANCE.waveringPenalty : 0;
 }
 
 function formationStayingPower(state: GameState, formationId: string | null): number {
@@ -88,14 +83,6 @@ export function rearSupport(state: GameState, blockId: string): number {
   return support;
 }
 
-function commandCohesionBonus(state: GameState, block: TroopBlock): number {
-  return Object.values(state.characters).some((character) => {
-    if (character.role !== "commander" || character.factionId !== block.factionId || character.status === "defeated") return false;
-    const host = state.blocks[character.hostBlockId];
-    return host && manhattanDistance(host.position, block.position) <= character.commandRadius;
-  }) ? 1 : 0;
-}
-
 function sumCalculation(terms: readonly CombatCalculationTerm[]): number {
   return terms.reduce((total, term) => total + term.value, 0);
 }
@@ -118,15 +105,13 @@ export function attackingPressureBreakdown(
   const formation = block?.formationId ? state.formations[block.formationId] : undefined;
   if (!block || !formation || block.isContested) return [];
   const character = hostCharacter(state, block);
-  const effectiveCohesion = Math.min(10, formation.cohesion + commandCohesionBonus(state, block));
   return [
     { label: `${formation.unit.unitType.replaceAll("_", " ")} pressure`, value: BALANCE.unitTypePressure[formation.unit.unitType] },
     { label: `${formation.formationMode} formation`, value: BALANCE.formationPressure[formation.formationMode] },
     { label: "Rear support", value: rearSupport(state, block.id) },
-    { label: "Cohesion", value: formationCohesionModifier(effectiveCohesion) },
     { label: character ? character.name : "Character", value: character?.pressureBonus ?? 0 },
     { label: "Order / charge", value: chargeBonus },
-    { label: "Disorder", value: -disorderPenalty(block.disorder) },
+    { label: "Breaking", value: blockIsBreaking(state, block.id) ? -BALANCE.waveringPenalty : 0 },
   ];
 }
 
@@ -146,9 +131,8 @@ export function defendingResistanceBreakdown(
   const character = hostCharacter(state, block);
   const terrain = terrainAt(state, block.position)!;
   const facing = effectiveBlockFacing(state, block.id);
-  const effectiveCohesion = Math.min(10, formation.cohesion + commandCohesionBonus(state, block));
   const spearBonus = cavalryCharge && formation.isBraced && hasEquipment(formation, "brace_against_charge")
-    && incomingDirection === facing && block.disorder < 4
+    && incomingDirection === facing && !blockIsWavering(state, block.id)
     ? BALANCE.spearChargeResistance
     : 0;
   const retreatHazard = forcedRetreatHazard(state, block, incomingDirection);
@@ -156,13 +140,12 @@ export function defendingResistanceBreakdown(
     { label: `${formation.unit.unitType.replaceAll("_", " ")} resistance`, value: BALANCE.unitTypeResistance[formation.unit.unitType] },
     { label: `${formation.formationMode} formation`, value: BALANCE.formationResistance[formation.formationMode] },
     { label: "Rear support", value: rearSupport(state, block.id) },
-    { label: "Cohesion", value: formationCohesionModifier(effectiveCohesion) },
     { label: character ? character.name : "Character", value: character?.resistanceBonus ?? 0 },
     { label: terrainDefinition(terrain).label, value: terrainResistanceModifier(terrain) },
     { label: retreatHazard === "cliff" ? "Cliff behind" : "Deep water behind", value: retreatHazard ? BALANCE.lethalRetreatResistance : 0 },
     { label: `${formationEdgeType(facing, incomingDirection)} contact`, value: facingContactModifier(facing, incomingDirection) },
     { label: "Braced spears", value: spearBonus },
-    { label: "Disorder", value: -disorderPenalty(block.disorder) },
+    { label: "Wavering", value: -waveringPenalty(state, block.id) },
   ];
 }
 
@@ -301,9 +284,7 @@ function retreatModeFor(
   const formation = defender.formationId ? state.formations[defender.formationId] : undefined;
   const stayingPower = formationStayingPower(state, defender.formationId);
   return netPressure >= BALANCE.chaoticRetreatPressureThreshold + stayingPower
-    || (formation?.cohesion ?? 0) <= BALANCE.chaoticRetreatCohesionThreshold - stayingPower
-    || defender.disorder >= BALANCE.chaoticRetreatDisorderThreshold
-    || formation?.status !== "formed"
+    || (formation?.cohesion ?? 0) <= BALANCE.breakingMoraleThreshold
     ? "chaotic"
     : "good_order";
 }
@@ -393,8 +374,7 @@ export interface PressureOptions {
   cavalryCharge?: boolean;
   allowAnyContact?: boolean;
   followUp?: boolean;
-  retreatRequiresMoraleLoss?: boolean;
-  retreatMoraleBaseline?: number;
+  pushThreshold?: number;
   defenceRollOverride?: number;
 }
 
@@ -437,7 +417,11 @@ export function pressurePreview(
   const retreatDirection = oppositeDirection(contactDirection);
   const retreatMode = retreatModeFor(state, defender, net);
   const retreat = planRetreat(state, defender, retreatDirection, retreatMode);
-  const retreatHazard = net >= 2 ? retreatPlanHazard(state, retreat) : null;
+  const pushThreshold = options.pushThreshold ?? BALANCE.pushPressureThreshold;
+  const retreatHazard = net >= pushThreshold ? retreatPlanHazard(state, retreat) : null;
+  const result: PressureResult = net <= 0 ? "holds"
+    : net < pushThreshold ? "wavers"
+      : retreatMode === "chaotic" ? "scattered" : "pushed";
   const retreatIntoDeepWater = retreatHazard === "river_deep";
   const characterModifiers: string[] = [];
   const attackingCharacter = hostCharacter(state, attacker);
@@ -448,13 +432,14 @@ export function pressurePreview(
   const casualtyDescription = expectedCasualties === 0
     ? "no casualties"
     : `${expectedCasualties} ${expectedCasualties === 1 ? "casualty" : "casualties"}`;
-  const expectedResult = net <= 0 ? `${casualtyDescription}; defender holds`
-    : net === 1 ? `${casualtyDescription}; defender gains disorder`
+  const expectedResult = result === "holds" ? `${casualtyDescription}; defender holds`
+    : result === "wavers" ? `${casualtyDescription}; defender wavers`
       : retreatHazard === "river_deep" ? `${casualtyDescription}; forced into deep water and drowns`
         : retreatHazard === "cliff" ? `${casualtyDescription}; forced over a cliff and destroyed`
       : net <= 5 ? `${casualtyDescription}; ${retreatDescription}`
         : `${casualtyDescription}; ${retreatDescription}; possible advance`;
   return {
+    result,
     attackerId,
     defenderId,
     attackingPressure: attack,
@@ -490,12 +475,20 @@ export function pressurePreview(
   };
 }
 
-function shockFormation(state: GameState, formationId: string | null, loss: number): void {
-  const formation = formationId ? state.formations[formationId] : undefined;
-  if (!formation) return;
+function shockFormation(formation: Formation, loss: number): void {
   formation.cohesion = Math.max(0, formation.cohesion - loss);
   if (formation.cohesion === 0) formation.status = "routed";
-  else if (formation.cohesion <= 3) formation.status = "disordered";
+  else if (formation.cohesion <= BALANCE.breakingMoraleThreshold) formation.status = "breaking";
+}
+
+/** Every morale loss inside `resolve` counts as one order, so frontage cannot multiply it. */
+export function withMoraleOrder<T>(state: GameState, resolve: () => T): T {
+  state.moraleOrder = { lost: {}, pushed: {} };
+  try {
+    return resolve();
+  } finally {
+    delete state.moraleOrder;
+  }
 }
 
 function formationModels(state: GameState, formation: Formation): number {
@@ -510,10 +503,63 @@ function familyModels(state: GameState, formationId: string): number {
   return moraleFamily(state, formationId).reduce((total, formation) => total + formationModels(state, formation), 0);
 }
 
-function shockMoraleFamily(state: GameState, formationId: string, loss: number): Formation[] {
+/** Applies a morale loss within the order's allowance and returns what was actually lost. */
+function shockMoraleFamily(state: GameState, formationId: string, loss: number): number {
+  const key = originalFormationId(formationId);
+  const lostThisOrder = state.moraleOrder?.lost[key] ?? 0;
+  const actualLoss = state.moraleOrder ? Math.min(loss, BALANCE.moraleLossPerOrder - lostThisOrder) : loss;
+  if (actualLoss <= 0) return 0;
+  if (state.moraleOrder) state.moraleOrder.lost[key] = lostThisOrder + actualLoss;
+  applyMoraleLoss(state, formationId, actualLoss);
+  return actualLoss;
+}
+
+function applyMoraleLoss(state: GameState, formationId: string, loss: number): void {
   const family = moraleFamily(state, formationId);
-  for (const formation of family) shockFormation(state, formation.id, loss);
-  return family;
+  const alreadyRouted = family.some((formation) => formation.status === "routed");
+  for (const formation of family) shockFormation(formation, loss);
+  if (!alreadyRouted && family.some((formation) => formation.status === "routed")) shakeFormationsBeside(state, family);
+}
+
+/** A rout is contagious: each steady neighbouring formation loses morale once when the line beside it breaks. */
+function shakeFormationsBeside(state: GameState, routed: readonly Formation[]): void {
+  const routedIds = new Set(routed.map((formation) => formation.id));
+  const neighbours = new Set<string>();
+  for (const formation of routed) {
+    for (const blockId of formation.blockIds) {
+      const block = state.blocks[blockId];
+      if (!block) continue;
+      for (const position of orthogonalNeighbours(block.position)) {
+        const friend = friendlyBlockAt(state, position, block.factionId);
+        if (friend?.formationId && !routedIds.has(friend.formationId)) neighbours.add(originalFormationId(friend.formationId));
+      }
+    }
+  }
+  const name = routed[0]?.name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "") ?? "A neighbouring formation";
+  for (const originalId of [...neighbours].sort()) {
+    const member = Object.values(state.formations).find((formation) => originalFormationId(formation.id) === originalId);
+    if (!member || member.status === "routed") continue;
+    const lost = shockMoraleFamily(state, member.id, BALANCE.neighbourRoutMoraleLoss);
+    if (lost <= 0) continue;
+    emitEvent(state, "morale_shock", `${member.name} lost ${lost} morale as ${name} broke beside it.`, {
+      blockIds: [...member.blockIds],
+      formationIds: [member.id],
+    });
+  }
+}
+
+/** Being shoved costs morale once per order, however many files were pushed. */
+function shockPushedFormation(state: GameState, formationId: string): void {
+  const key = originalFormationId(formationId);
+  if (state.moraleOrder?.pushed[key]) return;
+  if (state.moraleOrder) state.moraleOrder.pushed[key] = true;
+  const lost = shockMoraleFamily(state, formationId, BALANCE.pushedMoraleLoss);
+  if (lost <= 0) return;
+  const family = moraleFamily(state, formationId);
+  emitEvent(state, "morale_shock", `${family[0]?.name ?? "The formation"} lost ${lost} morale: pushed back.`, {
+    blockIds: family.flatMap((formation) => formation.blockIds),
+    formationIds: family.map((formation) => formation.id),
+  });
 }
 
 function applyCasualtyThresholds(state: GameState, formationId: string | null): void {
@@ -534,10 +580,11 @@ function applyCasualtyThresholds(state: GameState, formationId: string | null): 
   }
   if (nextStage === previousStage) return;
   for (const formation of family) formation.casualtyMoraleStage = nextStage;
-  shockMoraleFamily(state, formationId, moraleLoss);
+  const lost = shockMoraleFamily(state, formationId, moraleLoss);
+  if (lost <= 0) return;
   const crossed = BALANCE.casualtyMoraleThresholds[nextStage - 1]!;
   const name = family[0]!.name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
-  emitEvent(state, "morale_shock", `${name} fell to ${Math.round(crossed.remainingRatio * 100)}% of its models and lost ${moraleLoss} morale.`, {
+  emitEvent(state, "morale_shock", `${name} fell to ${Math.round(crossed.remainingRatio * 100)}% of its models and lost ${lost} morale.`, {
     blockIds: family.flatMap((formation) => formation.blockIds),
     formationIds: family.map((formation) => formation.id),
   });
@@ -570,14 +617,14 @@ export function applyTacticalMoraleShock(
   const ratio = ownModels > 0 ? enemyModels / ownModels : Number.POSITIVE_INFINITY;
   if (ratio >= BALANCE.outnumberedRatio
     && family.every((candidate) => candidate.lastOutnumberedShockRound !== state.round)) {
-    const heavilyOutnumbered = ratio >= BALANCE.heavilyOutnumberedRatio;
-    moraleLoss += heavilyOutnumbered ? BALANCE.heavilyOutnumberedMoraleLoss : BALANCE.outnumberedMoraleLoss;
-    reasons.push(heavilyOutnumbered ? "heavily outnumbered" : "outnumbered");
+    moraleLoss += BALANCE.outnumberedMoraleLoss;
+    reasons.push("outnumbered");
     for (const candidate of family) candidate.lastOutnumberedShockRound = state.round;
   }
   if (moraleLoss <= 0) return;
-  shockMoraleFamily(state, formationId, moraleLoss);
-  emitEvent(state, "morale_shock", `${formation.name} lost ${moraleLoss} morale: ${reasons.join(" and ")}.`, {
+  const lost = shockMoraleFamily(state, formationId, moraleLoss);
+  if (lost <= 0) return;
+  emitEvent(state, "morale_shock", `${formation.name} lost ${lost} morale: ${reasons.join(" and ")}.`, {
     blockIds: family.flatMap((candidate) => candidate.blockIds),
     formationIds: family.map((candidate) => candidate.id),
   });
@@ -585,7 +632,8 @@ export function applyTacticalMoraleShock(
 
 function applyLeaderLossShock(state: GameState, formationId: string | null, characterName: string): void {
   if (!formationId || !state.formations[formationId]) return;
-  const family = shockMoraleFamily(state, formationId, BALANCE.leaderDeathMoraleLoss);
+  const family = moraleFamily(state, formationId);
+  applyMoraleLoss(state, formationId, BALANCE.leaderDeathMoraleLoss);
   emitEvent(state, "morale_shock", `${family[0]?.name ?? "The formation"} lost ${BALANCE.leaderDeathMoraleLoss} morale when ${characterName} fell.`, {
     blockIds: family.flatMap((formation) => formation.blockIds),
     formationIds: family.map((formation) => formation.id),
@@ -711,12 +759,10 @@ export function retreatBlock(
     }
     for (const block of retreat.chain) {
       block.engagementFacing = undefined;
-      block.disorder += mode === "chaotic" ? 2 : 1;
+      block.wavering = true;
       block.hasRetreatedThisRound = true;
     }
-    for (const formationId of affectedFormationIds) {
-      shockFormation(state, formationId, mode === "chaotic" ? 2 : retreat.chain.length > 1 ? 1 : 0);
-    }
+    for (const formationId of affectedFormationIds) shockPushedFormation(state, formationId);
     emitEvent(
       state,
       mode === "chaotic" ? "chaotic_retreat" : retreat.chain.length > 1 ? "retreat_cascade" : "block_retreated",
@@ -753,9 +799,8 @@ export function retreatBlock(
     if (!state.blocks[defender.id]) return "destroyed";
     return mode === "chaotic" ? "chaotic" : retreat.chain.length > 1 ? "cascade" : "retreated";
   }
-  defender.disorder += 2;
-  for (const block of retreat.chain.slice(1)) block.disorder += 1;
-  shockFormation(state, defender.formationId, 2);
+  for (const block of retreat.chain) block.wavering = true;
+  if (defender.formationId) shockPushedFormation(state, defender.formationId);
   emitEvent(state, "block_compressed", `${defender.id} was compressed with no retreat space.`, {
     blockIds: retreat.chain.map((block) => block.id),
     formationIds: [...affectedFormationIds],
@@ -774,8 +819,6 @@ export function createContestedCell(state: GameState, attackerId: string, defend
   attacker.position = { ...defender.position };
   attacker.isContested = true;
   defender.isContested = true;
-  attacker.disorder += BALANCE.contestedDisorder;
-  defender.disorder += BALANCE.contestedDisorder;
   emitEvent(state, "contested_cell_created", `${attacker.id} and ${defender.id} became intermingled.`, {
     blockIds: [attacker.id, defender.id],
     formationIds: [attacker.formationId, defender.formationId].filter((id): id is string => Boolean(id)),
@@ -807,7 +850,7 @@ export function resolvePressure(
   const defender = state.blocks[defenderId]!;
   const defenderPosition = { ...defender.position };
   emitEvent(state, "pressure_applied", `${attacker.id} applied ${preview.attackingPressure} pressure to ${defender.id} (${preview.netPressure} net).`, {
-    blockIds: [attacker.id, defender.id], position: defenderPosition,
+    blockIds: [attacker.id, defender.id], position: defenderPosition, pressureResult: preview.result,
   });
   const destroyedByMelee = preview.expectedDamage > 0
     ? damageBlock(state, defenderId, preview.expectedDamage, "melee")
@@ -822,21 +865,9 @@ export function resolvePressure(
     return { ok: true, vacated: true, compressed: false };
   }
   const survivingDefender = state.blocks[defenderId];
-  const survivingFormation = survivingDefender?.formationId
-    ? state.formations[survivingDefender.formationId]
-    : undefined;
-  const moraleBaseline = options.retreatMoraleBaseline ?? survivingFormation?.cohesion ?? 0;
-  const moraleDropped = Boolean(survivingFormation && survivingFormation.cohesion < moraleBaseline);
-  if (options.retreatRequiresMoraleLoss && !moraleDropped) {
-    if (preview.netPressure > 0 && survivingDefender) survivingDefender.disorder += 1;
-    return { ok: true, vacated: false, compressed: false };
-  }
-  if (preview.netPressure <= 0) {
-    if (preview.netPressure <= -3) attacker.disorder += 1;
-    return { ok: true, vacated: false, compressed: false };
-  }
-  if (preview.netPressure === 1) {
-    defender.disorder += 1;
+  if (preview.result === "holds") return { ok: true, vacated: false, compressed: false };
+  if (preview.result === "wavers") {
+    if (survivingDefender) survivingDefender.wavering = true;
     return { ok: true, vacated: false, compressed: false };
   }
   const retreatDirection = directionBetween(attacker.position, defender.position);
@@ -999,6 +1030,7 @@ export function chargeConfirmationPreview(
       : "Highlighted tiles show fixed movement and possible advances. ! is certain; ? is possible. Hover for percentages.",
     tiles: outcomePreview.tiles,
     damage: outcomePreview.damage,
+    forecast: outcomePreview.forecast,
   };
 }
 
@@ -1029,6 +1061,15 @@ export function resolveCharge(
   attackerId: string,
   defenderId: string,
   options: Pick<PressureOptions, "defenceRollOverride"> = {},
+): boolean {
+  return withMoraleOrder(state, () => resolveChargeContacts(state, attackerId, defenderId, options));
+}
+
+function resolveChargeContacts(
+  state: GameState,
+  attackerId: string,
+  defenderId: string,
+  options: Pick<PressureOptions, "defenceRollOverride">,
 ): boolean {
   const preview = chargePreview(state, attackerId, defenderId);
   if (!preview) return false;
@@ -1084,7 +1125,7 @@ export function resolveCharge(
       const incomingDirection = directionBetween(currentDefender.position, attacker.position);
       const defenderFormation = currentDefender.formationId ? state.formations[currentDefender.formationId] : undefined;
       if (defenderFormation?.isBraced && hasEquipment(defenderFormation, "brace_against_charge")
-        && incomingDirection === effectiveBlockFacing(state, currentDefender.id) && currentDefender.disorder < 4) {
+        && incomingDirection === effectiveBlockFacing(state, currentDefender.id) && !blockIsWavering(state, currentDefender.id)) {
         damageBlock(state, attacker.id, 1, "braced spears");
         if (!state.blocks[attacker.id]) break;
       }
@@ -1148,7 +1189,7 @@ export function meleeScore(state: GameState, blockId: string): number {
   if (!block || !formation) return 0;
   const character = hostCharacter(state, block);
   return formation.unit.attack + modelCountModifier(block.models, block.modelCapacity) + (character?.meleeBonus ?? 0)
-    + (character?.temporaryMeleeBonus ?? 0) + adjacentMeleeSupport(state, block) - disorderPenalty(block.disorder);
+    + (character?.temporaryMeleeBonus ?? 0) + adjacentMeleeSupport(state, block) - waveringPenalty(state, block.id);
 }
 
 export function resolveContestedMelees(state: GameState): void {
@@ -1160,28 +1201,22 @@ export function resolveContestedMelees(state: GameState): void {
   }
   const damage = new Map<string, number>();
   for (const [romanId, saxonId] of cells.values()) {
-    const romanScore = meleeScore(state, romanId);
-    const saxonScore = meleeScore(state, saxonId);
-    const difference = romanScore - saxonScore;
     const romanInflicted = meleeDamagePreview(state, romanId, saxonId)?.expectedDamage ?? 0;
     const saxonInflicted = meleeDamagePreview(state, saxonId, romanId)?.expectedDamage ?? 0;
     if (romanInflicted > 0) damage.set(saxonId, romanInflicted);
     if (saxonInflicted > 0) damage.set(romanId, saxonInflicted);
-    if (difference !== 0) {
-      const winner = difference > 0 ? romanId : saxonId;
-      const winnerBlock = state.blocks[winner];
-      if (winnerBlock) winnerBlock.disorder += 1;
-    }
     emitEvent(state, "contested_melee_resolved", `Contested melee: ${romanId} inflicted ${romanInflicted}, ${saxonId} inflicted ${saxonInflicted}.`, {
       blockIds: [romanId, saxonId], position: state.blocks[romanId] ? { ...state.blocks[romanId]!.position } : undefined,
     });
   }
-  for (const [blockId, amount] of damage) damageBlock(state, blockId, amount, "contested melee");
+  withMoraleOrder(state, () => {
+    for (const [blockId, amount] of damage) damageBlock(state, blockId, amount, "contested melee");
+  });
   for (const [romanId, saxonId] of cells.values()) {
     const roman = state.blocks[romanId];
     const saxon = state.blocks[saxonId];
-    if (roman && !saxon) { roman.isContested = false; roman.disorder = Math.max(2, roman.disorder); }
-    if (saxon && !roman) { saxon.isContested = false; saxon.disorder = Math.max(2, saxon.disorder); }
+    if (roman && !saxon) { roman.isContested = false; roman.wavering = true; }
+    if (saxon && !roman) { saxon.isContested = false; saxon.wavering = true; }
   }
   recalculateAllConnectivity(state);
 }
@@ -1193,7 +1228,7 @@ function defeatCharacter(state: GameState, character: Character, opponent?: Char
   if (host) {
     for (const position of orthogonalNeighbours(host.position)) {
       const friendly = friendlyBlockAt(state, position, character.factionId);
-      if (friendly) friendly.disorder += 1;
+      if (friendly) friendly.wavering = true;
     }
   }
   if (opponent) opponent.temporaryMeleeBonus = 1;

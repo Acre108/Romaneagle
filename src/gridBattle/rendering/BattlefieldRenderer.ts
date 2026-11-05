@@ -1616,9 +1616,9 @@ export class BattlefieldRenderer {
     const soldierTexture = this.textureForSoldierArt(soldierArtKind(state, block));
     for (const slotIndex of occupiedSlots) {
       const projected = this.soldierOffset(BLOCK_SLOT_POINTS[slotIndex]!);
-      const jitter = Math.min(4, block.disorder) * ((slotIndex % 3) - 1);
+      const jitter = (block.wavering ? 2 : 0) * ((slotIndex % 3) - 1);
       const markX = projected.x + jitter;
-      const markY = projected.y - BLOCK_PLATFORM_HEIGHT - 3 + (block.disorder > 1 ? (slotIndex % 2) * 2 : 0);
+      const markY = projected.y - BLOCK_PLATFORM_HEIGHT - 3 + (block.wavering ? (slotIndex % 2) * 2 : 0);
       if (soldierTexture) {
         const sprite = new Sprite({
           texture: soldierTexture,
@@ -2037,7 +2037,7 @@ export class BattlefieldRenderer {
       const component = block.formationId ? componentIndexForBlock(state, block.formationId, block.id) : -1;
       const formation = block.formationId ? state.formations[block.formationId] : undefined;
       const label = new Text({
-        text: `${block.position.x},${block.position.y} Â· z${calculateIsoDepth(block.position.x, block.position.y)}\n${block.id} Â· C${component}\nM${block.models} D${block.disorder} P${attackingPressure(state, block.id)} R${defendingResistance(state, block.id, formation?.facing ?? "north")}`,
+        text: `${block.position.x},${block.position.y} Â· z${calculateIsoDepth(block.position.x, block.position.y)}\n${block.id} Â· C${component}\nM${block.models} W${block.wavering ? 1 : 0} P${attackingPressure(state, block.id)} R${defendingResistance(state, block.id, formation?.facing ?? "north")}`,
         style: { fontFamily: "Arial", fontSize: 7, fill: 0xffffff, stroke: { color: 0x000000, width: 2 }, align: "center" },
       });
       label.anchor.set(0.5, 1);

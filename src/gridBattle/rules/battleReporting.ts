@@ -32,7 +32,7 @@ function escapedModels(state: GameState, id: string): number {
 function formationState(family: readonly Formation[], escapedStrength: number): UnitState {
   if (family.length === 0) return escapedStrength > 0 ? "escaped" : "broken";
   if (family.some((formation) => formation.status === "routed")) return "routing";
-  if (family.some((formation) => formation.status === "disordered"
+  if (family.some((formation) => formation.status === "breaking"
     || formation.cohesion / Math.max(1, formation.maxCohesion) < 0.55)) return "shaken";
   return "steady";
 }

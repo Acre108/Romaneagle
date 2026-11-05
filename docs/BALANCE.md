@@ -16,12 +16,13 @@ Change these values through archetype or weapon profiles and update the relevant
 
 ## Grid-battle unit model
 
-The grid prototype uses one compact profile per formation: model size, Attack, Armour, Defence, HP per model, unit type, Movement, and equipment. Model count is the sum of the formation's block occupants. Blocks do not duplicate the profile; they only record their current models, partial wounds, position, disorder, and combat state.
+The grid prototype uses one compact profile per formation: model size, Attack, Armour, Defence, HP per model, unit type, Movement, and equipment. Model count is the sum of the formation's block occupants. Blocks do not duplicate the profile; they only record their current models, partial wounds, position, wavering, and combat state.
 
 - `model capacity = floor(formation model space / model size)`: open formations provide 10 space and closed formations provide 18.
 - Pressure and Resistance are derived from unit type plus formation mode. They are never stored as editable unit stats.
 - Light/medium/heavy infantry currently contribute `2/3/4` Pressure and Resistance. Light/heavy cavalry contribute `3/4` Pressure and `2/3` Resistance.
 - Closed formation adds `+2` Pressure and `+2` Resistance; open formation adds neither.
+- HP per model is set so any full block has about 9-10 HP, so one blow costs each block a similar share of its strength.
 - Attack creates damage. Defence is a deterministic percentage chance to evade that damage. Armour is a flat reduction after a hit; each surviving partial wound remains on its block according to HP per model.
 - `shield_front` grants `+1` Armour only against the front face. Brace grants another `+1` Armour until the formation moves.
 - `brace_against_charge` is equipment, not a permanent spear stat. It adds charge Resistance and counter-damage only while the equipped close-order infantry is actually braced and presents its front.
@@ -44,5 +45,5 @@ The campaign unit catalogue is still a separate design catalogue. Mapping its ri
 - One deterministic relocation planner handles rigid movement, Fall back, and narrow-passage reorder moves. The fifteen-block Great Warband can therefore enter the three-square shallow ford as three files and five ranks while deep water remains forbidden. One order planner previews all player commands without mutating live state. Footprint-changing movement and every combat order require confirmation: `!` destinations are fixed, while `?` destinations cover Attack, Charge, Battle, and Press outcomes that depend on combat resolution. Finish-facing pivots do not relocate blocks.
 - A charge target anchors the formation's approach rather than monopolising its attack. After landing, every front block with an enemy directly ahead resolves once in deterministic lateral order. Infantry charge bonuses and braced-front cancellation are snapshotted per initial contact; cavalry blocks carry momentum and breakthrough independently down each contacting lane.
 - Infantry and cavalry follow-through uses the same file-advance rule as Press: whenever the lead block occupies a vacated enemy square, every contiguous rear block shifts forward behind it. Charge commitment ignores wavering stops; Press and ordinary Battle dressing still stop at a wavering follower.
-- Battle pressure cannot move a surviving block while its formation retains the morale it had at the start of the order. Casualty-threshold, flank, or outnumbering morale loss enables normal pressure retreats across every affected contact. A block that moves into contact while closing an internal Battle gap resolves one additional pressure exchange immediately.
+- Battle only shoves a surviving block at net pressure 4 or more; Press and other attacks shove at 2 or more. Below the threshold a positive net makes the block waver.
 - Battle preserves the formation's pre-combat foremost rank rather than every block's exact square. A lagging forward-facing file may advance into a gap it creates up to that rank, with steady rear blocks following; only Press or Charge may pursue beyond it.

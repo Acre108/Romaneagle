@@ -348,7 +348,7 @@ export class GridBattleController {
         ? preview.retreatHazard === "river_deep"
           ? "Retreat enters deep water: affected blocks drown"
           : "Retreat crosses a cliff of more than one level: affected blocks are destroyed"
-        : preview.netPressure < 2
+        : preview.result === "holds" || preview.result === "wavers"
         ? "No retreat predicted"
         : preview.retreatMode === "chaotic"
         ? `Chaotic retreat: ${preview.retreatDestinations.map((position) => `${String.fromCharCode(65 + position.x)}${position.y + 1}`).join(", ")}`
@@ -642,7 +642,6 @@ export class GridBattleController {
     stats.replaceChildren(...definitionRows([
       ["Models", `${block.models}/${block.modelCapacity}`],
       ["Hit points", formation ? blockHitPoints(formation, block) : 0],
-      ["Disorder", block.disorder],
       ["Facing", effectiveBlockFacing(this.state, block.id)],
       ["Morale", blockIsWavering(this.state, block.id) ? "Wavering" : "Steady"],
       ["Pressure", attackingPressure(this.state, block.id)],
@@ -681,6 +680,11 @@ export class GridBattleController {
     if (this.pendingOrder) {
       requiredElement("grid-order-confirm-title").textContent = this.pendingOrder.preview.title;
       requiredElement("grid-order-confirm-detail").textContent = this.pendingOrder.preview.detail;
+      requiredElement("grid-order-confirm-forecast").replaceChildren(...(this.pendingOrder.preview.forecast ?? []).map((line) => {
+        const item = document.createElement("li");
+        item.textContent = line;
+        return item;
+      }));
     }
   }
 

@@ -92,6 +92,14 @@ The AI is deterministic and operates at formation level. It prioritises formatio
 
 ## Core rules
 
+### What decides a battle
+
+Three things matter, in this order:
+
+1. **Position.** Getting the right formation to the right place at the right time is the player's main choice. Pressure is not a stored track; it is the check that turns position into a shove.
+2. **Morale.** Shoves and bad angles cost a formation its morale until it routs. This is how good movement physically shifts the battlefield.
+3. **Strength.** Casualties matter and are permanent, but killing takes far longer than breaking. A routed formation disrupts the line around it and can rally; a dead block just leaves a gap.
+
 ### Movement, facing, and support
 
 Formations normally translate as rigid connected footprints. Every step is north, east, south, or west; there is no individual-soldier pathfinding. When terrain prevents the full footprint from translating but leaves a connected passage, a deterministic **reorder move** narrows the block footprint from the front and fills ranks behind it. Any Move or Fall back that changes the footprint or creates terrain overflow pauses for confirmation. Its destination shadows use `!` for certain block positions. At the end of Move, the player chooses any cardinal facing. The blocks pivot in place rather than wheeling, and all characters cross to the middle of the new front rank.
@@ -109,22 +117,47 @@ attacking pressure =
   unit-type pressure
   + formation pressure
   + rear support
-  + morale modifier
   + host-character bonus
   + charge attack bonus or cavalry momentum
-  - disorder penalty
+  - 2 if breaking (morale 3 or below)
 
 defending resistance =
   unit-type resistance
   + formation resistance
   + rear support
-  + morale modifier
   + host-character bonus
   + terrain modifier
   + facing modifier
   + braced-spear bonus
-  - disorder penalty
+  - 2 if wavering
 ```
+
+Net pressure gives one of four results, which the order confirmation lists for each formation alongside its morale change, including a warning when the order will rout it:
+
+| Net pressure | Result |
+| --- | --- |
+| 0 or less | **Holds** |
+| 1 (or below Battle's threshold of 4) | **Wavers**: the block stays put but becomes wavering |
+| 2 or more | **Pushed**: the block retreats and wavers |
+| 6 or more, or the formation is breaking | **Scattered**: a chaotic retreat that can split the formation |
+
+A **wavering** block is 2 easier to shove and will not advance or brace, but it can still push back on its own order. It wavers after being shoved or cut off, while intermingled with the enemy, and while its formation is breaking. Wavering clears at the end of that formation's next activation, which gives other enemy formations a one-activation window to exploit.
+
+### Morale
+
+Morale losses are charged per order, not per file, so frontage cannot multiply them:
+
+| Cause | Morale |
+| --- | --- |
+| Pushed or scattered (once per order) | -2 |
+| Flanked / attacked from the rear (once per round) | -2 / -3 |
+| Outnumbered 1.25 to 1 or worse (once per round) | -1 |
+| Falling to 75%, 50%, 25% of starting models | -2, -2, -3 |
+| A neighbouring formation routs | -1 |
+| Most lost in one order, apart from a leader's death | -5 |
+| Leader lost | -3 |
+
+Hold recovers 1 morale. At 3 or below a formation is breaking; at 0 it routs. Routers run automatically, pour through friendly blocks (which swap places with them and waver), and rally if they get clear, but enemies or impassable ground can trap them until they disperse. A routed formation counts as broken for objectives until it rallies.
 
 Every player order first passes through one non-mutating planner. Simple orders execute immediately, while Attack, Charge, Battle, Press, and formation-changing movement pause on the same board confirmation. The combat preview shows both totals, net pressure, expected damage or retreat quality, retreat destinations, possible cascade, compression risk, and local character modifiers. `!` marks fixed destinations and `?` marks positions that depend on combat resolution.
 
@@ -142,7 +175,7 @@ maximum = 4 damage per attacking block
 
 The Defence roll is derived deterministically from the round and the two block identities, so identical resets remain exactly reproducible. If the attack is not evaded, Armour, frontal shield Armour, and Brace Armour reduce its damage. Damage is then applied to HP; a model disappears only when its HP is exhausted, with partial wounds retained on the block.
 
-One model is one visible person. Model size controls how much formation space it consumes, not its HP. Each lost model removes one soldier mark and contributes to morale shock, so losses make subsequent good-order and chaotic retreats progressively more likely. Casualty events show a red floating count and fallen-figure flash on the affected square.
+One model is one visible person. Model size controls how much formation space it consumes, and larger models carry more HP so that any full block has about 9-10 HP: close-order infantry 9 models at 1 HP, open-order infantry 5 at 2, cavalry 3 at 3. A blow therefore costs any block a similar share of its strength. A block shoved by an attack does not counterattack; a block killed by it still strikes back. Each lost model removes one soldier mark.
 
 ### Ranged combat
 
@@ -157,8 +190,8 @@ Roman close-order century formations use nine blocks of nine occupants. *Legio I
 A formation is engaged whenever one of its blocks is orthogonally adjacent to an enemy or shares a contested square. Engaged blocks receive an orange outline and the ordinary movement/attack controls are replaced by three orders:
 
 - **Fall back:** reverse the complete formation one square without changing facing.
-- **Battle:** every block in contact fights one adjacent enemy. Pressure adds disorder but only forces a surviving enemy block back when its formation has lost morale during that Battle. A lagging file may dress up to the formation's existing foremost rank; if that movement creates a new contact, the arriving block immediately fights its own pressure exchange. Steady blocks directly behind follow to keep the file intact. A file already on the front rank does not pursue beyond it.
-- **Press:** every contacting block receives +2 pressure for that activation and advances into any enemy square it forces open. When a front block advances, each steady block directly behind it follows forward one square, shifting the complete file. A block at disorder 2 or higher is wavering and stops the follow movement for itself and every block behind it.
+- **Battle:** every block in contact fights one adjacent enemy at full damage, but only shoves on a clear win, net pressure 4 or more. A lagging file may dress up to the formation's existing foremost rank; if that movement creates a new contact, the arriving block immediately fights its own pressure exchange. Steady blocks directly behind follow to keep the file intact. A file already on the front rank does not pursue beyond it.
+- **Press:** every contacting block receives +2 pressure and deals 1 less damage for that activation, shoves at net pressure 2 or more, and advances into any enemy square it forces open. When a front block advances, each steady block directly behind it follows forward one square, shifting the complete file. A wavering block stops the follow movement for itself and every block behind it.
 
 Battle and Press preview every participating contact together before they resolve. The overlay includes both factions: possible holds, retreats, removals, formation refills, and Press file advances are marked with `?`.
 
@@ -170,9 +203,9 @@ When an engaged formation is selected for a new activation, one deterministic un
 
 A pressured block retreats directly away from the attacker, regardless of its own facing. Neighbouring blocks do not automatically retreat with it.
 
-Formed troops under manageable pressure retreat in good order. If a friendly block occupies the retreat square, the rules trace away from the attacker until they find empty legal ground. The chain shifts from rear to front and every displaced block gains disorder.
+Formed troops under manageable pressure retreat in good order. If a friendly block occupies the retreat square, the rules trace away from the attacker until they find empty legal ground. The chain shifts from rear to front and every displaced block wavers.
 
-Overwhelming pressure, low morale, an already-disordered formation, or heavy block disorder causes a chaotic retreat. The contacted block always withdraws orthogonally away from its attacker; following blocks may alternate between rear-left and rear-right escape lanes. They gain extra disorder and morale loss, and disconnected groups become fragments that must reform and merge. If the contacted block is driven into an enemy behind it, both occupy a contested square. If no legal retreat or escape lane exists because of terrain, contested squares, or the map edge, the original block is compressed: it takes additional damage and disorder, its formation loses morale, and the attackers may create a contested square.
+Overwhelming pressure or a breaking formation causes a chaotic retreat. The contacted block always withdraws orthogonally away from its attacker; following blocks may alternate between rear-left and rear-right escape lanes, and disconnected groups become fragments that must reform and merge. If the contacted block is driven into an enemy behind it, both occupy a contested square. If no legal retreat or escape lane exists because of terrain, contested squares, or the map edge, the original block is compressed: it takes additional damage and wavers, its formation loses morale for being pushed, and the attackers may create a contested square.
 
 This makes empty recovery space behind a line valuable and tightly packed reserves potentially dangerous.
 
@@ -213,7 +246,7 @@ Impact damage resolves before ordinary pressure. Each contacting cavalry block c
 
 A square may contain one Roman and one Saxon block. It may never contain two blocks of the same faction or more than two blocks total. Contested blocks cannot move normally, provide support, or transmit formation connectivity.
 
-At round end, both occupants calculate deterministic melee scores and take simultaneous damage. If one is destroyed, the survivor controls the square with lingering disorder. Characters sharing that square duel alongside the soldiers; wounds, defeat, formation morale shock, and a temporary victor bonus are all deterministic.
+At round end, both occupants calculate deterministic melee scores and take simultaneous damage. If one is destroyed, the survivor controls the square and wavers. Characters sharing that square duel alongside the soldiers; wounds, defeat, formation morale shock, and a temporary victor bonus are all deterministic.
 
 ## Architecture
 
@@ -233,10 +266,12 @@ No file under `src/gridBattle/rules` imports PixiJS. Rendering never decides com
 
 ## Debug tools
 
-Press `D` to display block IDs, grid/projected coordinates, depth keys, formation/component IDs, models, disorder, hovered picking candidates, camera position, and zoom. The debug panel can toggle projected cardinal axes, frame the board, damage or retreat the selected block, force a split, create a contested cell, resolve melees, and restore morale. Reset is deliberately deterministic.
+Press `D` to display block IDs, grid/projected coordinates, depth keys, formation/component IDs, models, wavering, hovered picking candidates, camera position, and zoom. The debug panel can toggle projected cardinal axes, frame the board, damage or retreat the selected block, force a split, create a contested cell, resolve melees, and restore morale. Reset is deliberately deterministic.
 
 ## Known edge cases
 
+- Deliberately left out of the morale and strength rules until they are playtested: scaling melee damage by a block's remaining models and making volleys cause wavering instead of relying on casualties.
+- Blocks still turn to face their nearest enemy for free on Battle or Press, which removes the resistance and damage penalty of being flanked on the next contact, though not the morale shock.
 - The TEST SCENARIO keeps the original demonstration map and its three Saxon formations, and deploys the Roman formations chosen for it. Its ballistarii fight as light infantry with their ranged weapon, because the grid battle has no separate artillery rules yet.
 - Attack follow-up is automatic after an overwhelming retreat and is shown in the on-board `?` outcome preview before confirmation.
 - Charge continuation models a straight breakthrough, but offers no optional mid-charge stop prompt yet.

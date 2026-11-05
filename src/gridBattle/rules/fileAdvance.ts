@@ -1,17 +1,11 @@
 import { emitEvent } from "../events/events";
-import { BALANCE } from "../model/config";
 import { blocksAt } from "../model/occupancy";
 import type { Formation, GameState, GridPosition, TroopBlock } from "../model/types";
 import { clearFormationBrace } from "./brace";
 import { addPosition, directionBetween, directionVector, oppositeDirection } from "./direction";
 import { recalculateFormationConnectivity } from "./splitting";
+import { blockIsWavering } from "./wavering";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
-
-function followerIsWavering(state: GameState, block: TroopBlock): boolean {
-  const formation = block.formationId ? state.formations[block.formationId] : undefined;
-  return block.disorder >= BALANCE.waveringDisorderThreshold
-    || (formation?.cohesion ?? 0) <= BALANCE.breakingMoraleThreshold;
-}
 
 export interface FileAdvanceOptions {
   reason?: "combat" | "charge";
@@ -42,7 +36,7 @@ export function advanceCombatFile(
 
   const moved = [lead];
   for (const follower of followers) {
-    if ((options.stopAtWavering ?? true) && followerIsWavering(state, follower)) break;
+    if ((options.stopAtWavering ?? true) && blockIsWavering(state, follower.id)) break;
     moved.push(follower);
   }
   const relocations = moved.map((block, index) => ({

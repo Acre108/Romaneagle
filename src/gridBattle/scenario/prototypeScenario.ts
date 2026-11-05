@@ -23,7 +23,7 @@ import type {
   UnitProfile,
   UnitType,
 } from "../model/types";
-import { isCavalry, modelCapacity } from "../model/unitStats";
+import { hitPointsPerModel, isCavalry, modelCapacity } from "../model/unitStats";
 import { getRangedWeaponProfile, type RangedWeaponId } from "../../units/RangedWeapons";
 
 interface FormationSpec {
@@ -154,7 +154,7 @@ function prototypeBattlefieldMap(): BattlefieldMap {
             attack: 2,
             armour: 0,
             defence: 0,
-            hitPointsPerModel: 1,
+            hitPointsPerModel: hitPointsPerModel("open", 2),
             movement: BALANCE.movement.light_infantry,
             equipment: [],
           },
@@ -184,7 +184,7 @@ function unitProfile(spec: FormationSpec): UnitProfile {
     attack: cavalry ? 3 : spec.unitType === "light_infantry" ? 2 : 3,
     armour: spec.factionId === "roman" && heavyInfantry ? 1 : 0,
     defence: 0,
-    hitPointsPerModel: 1,
+    hitPointsPerModel: hitPointsPerModel(spec.formationMode, cavalry ? 3 : 2),
     movement: BALANCE.movement[spec.unitType],
     equipment: spec.equipment ?? (heavyInfantry ? ["shield_front"] : []),
     rangedWeaponId: spec.rangedWeaponId,
@@ -227,7 +227,7 @@ function addFormation(
       models: capacity,
       modelCapacity: capacity,
       wounds: 0,
-      disorder: 0,
+      wavering: false,
       characterId: null,
       hasRetreatedThisRound: false,
       isContested: false,

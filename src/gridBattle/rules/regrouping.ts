@@ -91,7 +91,7 @@ function mergeTouchingPair(state: GameState, first: Formation, second: Formation
     keeper.failedRegroupActivations = undefined;
   }
   keeper.name = siblingsRemain ? keeper.name : originalName;
-  keeper.status = keeper.cohesion <= 0 ? "routed" : keeper.cohesion <= 3 ? "disordered"
+  keeper.status = keeper.cohesion <= 0 ? "routed" : keeper.cohesion <= 3 ? "breaking"
     : connectedComponents(state, keeper.id).length === 1 && !siblingsRemain ? "formed" : "fragment";
   return keeper;
 }
@@ -218,9 +218,9 @@ function confirmIndependentSplit(state: GameState, familyId: string): void {
     formation.failedRegroupActivations = undefined;
     formation.hasActivated = true;
     formation.movementRemaining = 0;
-    formation.status = formation.cohesion <= 0 ? "routed" : formation.cohesion <= 3 ? "disordered" : "fragment";
+    formation.status = formation.cohesion <= 0 ? "routed" : formation.cohesion <= 3 ? "breaking" : "fragment";
     for (const block of formationBlocks(state, formation)) {
-      block.disorder = Math.max(BALANCE.waveringDisorderThreshold, block.disorder);
+      block.wavering = true;
     }
   }
   emitEvent(state, "formation_split_confirmed", `${familyName(formations[0]!)} could not regroup after ${BALANCE.fragmentRegroupGraceActivations} shared activations; ${formations.length} substantial bodies are now independent.`, {
@@ -236,7 +236,7 @@ function clearResolvedSingleGroup(state: GameState, familyId: string): boolean {
   formation.provisionalFamilyId = null;
   formation.failedRegroupActivations = undefined;
   formation.name = familyName(formation);
-  formation.status = formation.cohesion <= 0 ? "routed" : formation.cohesion <= 3 ? "disordered"
+  formation.status = formation.cohesion <= 0 ? "routed" : formation.cohesion <= 3 ? "breaking"
     : connectedComponents(state, formation.id).length === 1 ? "formed" : "fragment";
   return true;
 }

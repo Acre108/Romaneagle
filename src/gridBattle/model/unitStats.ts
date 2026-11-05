@@ -1,5 +1,5 @@
 import { BALANCE } from "./config";
-import type { EquipmentAbility, Formation, GameState, TroopBlock, UnitType } from "./types";
+import type { EquipmentAbility, Formation, FormationMode, GameState, TroopBlock, UnitType } from "./types";
 
 export function isInfantry(unitType: UnitType): boolean {
   return unitType === "light_infantry" || unitType === "medium_infantry" || unitType === "heavy_infantry";
@@ -15,6 +15,12 @@ export function hasEquipment(formation: Formation, ability: EquipmentAbility): b
 
 export function modelCapacity(formation: Formation): number {
   return Math.max(1, Math.floor(BALANCE.formationModelSpace[formation.formationMode] / formation.unit.modelSize));
+}
+
+/** Bigger models are tougher, so one blow costs any full block about the same share of its strength. */
+export function hitPointsPerModel(formationMode: FormationMode, modelSize: number): number {
+  const capacity = Math.max(1, Math.floor(BALANCE.formationModelSpace[formationMode] / modelSize));
+  return Math.max(1, Math.round(BALANCE.blockHitPointsTarget / capacity));
 }
 
 export function blockHitPoints(formation: Formation, block: TroopBlock): number {

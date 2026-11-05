@@ -126,7 +126,7 @@ export function recalculateFormationConnectivity(state: GameState, formationId: 
   const connected = connectedComponents(state, formationId);
   if (connected.length <= 1) {
     formation.status = formation.cohesion <= 0 ? "routed"
-      : formation.cohesion <= 3 ? "disordered" : formation.status === "fragment" ? "fragment" : "formed";
+      : formation.cohesion <= 3 ? "breaking" : formation.status === "fragment" ? "fragment" : "formed";
     return [formationId];
   }
   const retainedConnected = retainedComponent(state, formation, connected);
@@ -134,9 +134,9 @@ export function recalculateFormationConnectivity(state: GameState, formationId: 
     const newlyWavering = connected
       .filter((component) => component !== retainedConnected)
       .flat()
-      .filter((id) => state.blocks[id]!.disorder < BALANCE.waveringDisorderThreshold);
+      .filter((id) => !state.blocks[id]!.wavering);
     for (const id of newlyWavering) {
-      state.blocks[id]!.disorder = BALANCE.waveringDisorderThreshold;
+      state.blocks[id]!.wavering = true;
     }
     if (newlyWavering.length > 0) {
       emitEvent(state, "formation_wavered", `${formation.name} bent but held together; ${newlyWavering.length} block${newlyWavering.length === 1 ? " is" : "s are"} wavering.`, {
@@ -152,7 +152,7 @@ export function recalculateFormationConnectivity(state: GameState, formationId: 
     for (const component of connected) {
       if (component === retainedConnected) continue;
       for (const id of component) {
-        state.blocks[id]!.disorder = Math.max(state.blocks[id]!.disorder, BALANCE.waveringDisorderThreshold);
+        state.blocks[id]!.wavering = true;
       }
     }
     return [formation.id];
@@ -194,7 +194,7 @@ export function recalculateFormationConnectivity(state: GameState, formationId: 
       id: fragmentId,
       name: `${originalName} – Fragment ${String.fromCharCode(labelCode++)}`,
       blockIds: component,
-      cohesion: Math.max(0, formation.cohesion - BALANCE.fragmentCohesionLoss),
+      cohesion: formation.cohesion,
       leaderCharacterId: originalLeaderCharacterId && component.includes(state.characters[originalLeaderCharacterId]?.hostBlockId ?? "")
         ? originalLeaderCharacterId
         : null,

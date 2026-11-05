@@ -81,6 +81,8 @@ export interface OrderConfirmationPreview {
   detail: string;
   tiles: OrderPreviewTile[];
   damage: CombatBlockDamagePreview[];
+  /** One plain line per formation whose morale or position the order changes. */
+  forecast?: string[];
 }
 
 export interface TroopBlock {
@@ -91,7 +93,7 @@ export interface TroopBlock {
   models: number;
   modelCapacity: number;
   wounds: number;
-  disorder: number;
+  wavering: boolean;
   characterId: string | null;
   hasRetreatedThisRound: boolean;
   isContested: boolean;
@@ -131,7 +133,7 @@ export interface Formation {
   movementRemaining: number;
   hasActivated: boolean;
   leaderCharacterId: string | null;
-  status: "formed" | "fragment" | "disordered" | "routed";
+  status: "formed" | "fragment" | "breaking" | "routed";
   provisionalFamilyId?: string | null;
   failedRegroupActivations?: number;
   isBraced?: boolean;
@@ -236,6 +238,7 @@ export interface GameEvent {
   casualties?: number;
   departingBlocks?: BlockDeparture[];
   triggerId?: string;
+  pressureResult?: PressureResult;
 }
 
 export interface TriggerInteraction {
@@ -256,6 +259,11 @@ export interface BlockDeparture {
   to: GridPosition;
 }
 
+export interface MoraleOrder {
+  lost: Record<string, number>;
+  pushed: Record<string, boolean>;
+}
+
 export interface GameState {
   battlefield: BattlefieldMap;
   round: number;
@@ -270,12 +278,17 @@ export interface GameState {
   eventLog: GameEvent[];
   /** Immutable snapshots of blocks that fled the playable map, retained for battle reporting. */
   departedBlocks?: BlockDeparture[];
+  /** Morale already spent by the order being resolved; absent between orders. */
+  moraleOrder?: MoraleOrder;
   nextEventId: number;
   nextFragmentId: number;
   triggerState: TriggerRuntimeState;
 }
 
+export type PressureResult = "holds" | "wavers" | "pushed" | "scattered";
+
 export interface PressurePreview {
+  result: PressureResult;
   attackerId: string;
   defenderId: string;
   attackingPressure: number;

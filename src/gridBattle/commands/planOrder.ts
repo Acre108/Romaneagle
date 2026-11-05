@@ -1,14 +1,13 @@
 import { BALANCE } from "../model/config";
-import type { GameState, OrderConfirmationPreview, PressurePreview } from "../model/types";
+import type { Formation, GameState, OrderConfirmationPreview, PressurePreview } from "../model/types";
 import { chargeConfirmationPreview, pressurePreview } from "../rules/combat";
 import { aggregateCombatOutcomes, blockCombatMath, contactSummaryLines } from "../rules/combatPreview";
 import { oppositeDirection } from "../rules/direction";
 import { engagedContacts, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";
 import { planFormationMove } from "../rules/movement";
-import { formationFamilyIsRouted } from "../rules/routing";
 import { provisionalFormationFamily } from "../rules/splitting";
 import { rangedConfirmationPreview } from "../rules/rangedCombat";
-import type { GameCommand } from "./executeCommand";
+import { commandPermission, routedMoveReason, selectedFormation, type GameCommand } from "./executeCommand";
 
 export interface PlannedOrder {
   command: GameCommand;
@@ -29,66 +28,63 @@ function rejected(reason: string): OrderPlanResult {
   return { ok: false, reason };
 }
 
-function selectedFormation(state: GameState) {
-  return state.selectedFormationId ? state.formations[state.selectedFormationId] : undefined;
+/** Moves that change a formation's footprint must show every destination first. */
+function reorderConfirmation(
+  formation: Formation,
+  relocations: readonly { blockId: string; destination: { x: number; y: number } }[],
+  title: string,
+  detail: string,
+  math: string,
+): OrderConfirmationPreview {
+  return {
+    kind: "movement",
+    title,
+    detail,
+    tiles: relocations.map((relocation) => ({
+      position: { ...relocation.destination }, factionId: formation.factionId, certainty: "certain",
+      chance: 100,
+      blockId: relocation.blockId,
+      math: [math],
+    })),
+    damage: [],
+  };
 }
 
-function planMove(state: GameState, command: Extract<GameCommand, { type: "move" }>): OrderPlanResult {
-  const formation = selectedFormation(state);
-  if (!formation) return rejected("Select a formation first.");
-  if (formationFamilyIsRouted(state, formation.id) && command.direction !== oppositeDirection(formation.facing)) {
-    return rejected("Morale has broken; movement must be directly away from the enemy.");
-  }
+function planMove(state: GameState, formation: Formation, command: Extract<GameCommand, { type: "move" }>): OrderPlanResult {
+  const routedReason = routedMoveReason(state, formation, command.direction);
+  if (routedReason) return rejected(routedReason);
   const planned = planFormationMove(state, formation.id, command.direction);
   if (!planned.ok || !planned.plan) return rejected(planned.reason ?? "That move is not legal.");
   if (!planned.plan.reordered) return accepted(command);
-  return accepted(command, {
-    kind: "movement",
-    title: "Confirm reorder move",
-    detail: "The formation changes footprint or leaves troops behind. Every destination is marked 100%.",
-    tiles: planned.plan.relocations.map((relocation) => ({
-      position: { ...relocation.destination }, factionId: formation.factionId, certainty: "certain",
-      chance: 100,
-      blockId: relocation.blockId,
-      math: ["Fixed formation relocation: this destination is occupied on every valid outcome."],
-    })),
-    damage: [],
-  });
+  return accepted(command, reorderConfirmation(
+    formation,
+    planned.plan.relocations,
+    "Confirm reorder move",
+    "The formation changes footprint or leaves troops behind. Every destination is marked 100%.",
+    "Fixed formation relocation: this destination is occupied on every valid outcome.",
+  ));
 }
 
-function planFallBack(state: GameState, command: Extract<GameCommand, { type: "fall_back" }>): OrderPlanResult {
-  const formation = selectedFormation(state);
-  if (!formation || !formationIsEngaged(state, formation.id)) return rejected("Only an engaged formation may fall back.");
+function planFallBack(state: GameState, formation: Formation, command: Extract<GameCommand, { type: "fall_back" }>): OrderPlanResult {
   const planned = planFormationMove(state, formation.id, oppositeDirection(formation.facing));
   if (!planned.ok || !planned.plan) return rejected(planned.reason ?? "The formation cannot fall back.");
   if (!planned.plan.reordered) return accepted(command);
-  return accepted(command, {
-    kind: "movement",
-    title: "Confirm reordered fall back",
-    detail: "The formation must change footprint as it leaves contact. Every destination is marked 100%.",
-    tiles: planned.plan.relocations.map((relocation) => ({
-      position: { ...relocation.destination }, factionId: formation.factionId, certainty: "certain",
-      chance: 100,
-      blockId: relocation.blockId,
-      math: ["Fixed fall-back relocation: this destination is occupied on every valid outcome."],
-    })),
-    damage: [],
-  });
+  return accepted(command, reorderConfirmation(
+    formation,
+    planned.plan.relocations,
+    "Confirm reordered fall back",
+    "The formation must change footprint as it leaves contact. Every destination is marked 100%.",
+    "Fixed fall-back relocation: this destination is occupied on every valid outcome.",
+  ));
 }
 
-function planCharge(state: GameState, command: Extract<GameCommand, { type: "charge" }>): OrderPlanResult {
-  const attacker = state.blocks[command.attackerId];
-  const formation = selectedFormation(state);
-  if (!formation || !attacker || !formation.blockIds.includes(attacker.id)) return rejected("Select the charging formation.");
-  if (formationFamilyIsRouted(state, formation.id)) return rejected("Morale has broken; this unit is routing automatically.");
+function planCharge(state: GameState, formation: Formation, command: Extract<GameCommand, { type: "charge" }>): OrderPlanResult {
+  if (!formation.blockIds.includes(command.attackerId)) return rejected("Select the charging formation.");
   const confirmation = chargeConfirmationPreview(state, command.attackerId, command.defenderId);
   return confirmation ? accepted(command, confirmation) : rejected("The target is not in a legal forward charge lane.");
 }
 
-function planShoot(state: GameState, command: Extract<GameCommand, { type: "shoot" }>): OrderPlanResult {
-  const formation = selectedFormation(state);
-  if (!formation) return rejected("Select the shooting formation.");
-  if (formationFamilyIsRouted(state, formation.id)) return rejected("Morale has broken; this unit is routing automatically.");
+function planShoot(state: GameState, formation: Formation, command: Extract<GameCommand, { type: "shoot" }>): OrderPlanResult {
   const confirmation = rangedConfirmationPreview(state, formation.id, command.defenderId);
   return confirmation
     ? accepted(command, confirmation)
@@ -97,11 +93,9 @@ function planShoot(state: GameState, command: Extract<GameCommand, { type: "shoo
 
 function planEngagedCombat(
   state: GameState,
+  formation: Formation,
   command: Extract<GameCommand, { type: "battle" | "press" }>,
 ): OrderPlanResult {
-  const formation = selectedFormation(state);
-  if (!formation || !formationIsEngaged(state, formation.id)) return rejected("Select an engaged formation first.");
-  if (formationFamilyIsRouted(state, formation.id)) return rejected("Morale has broken; this unit is routing automatically.");
   const contacts = provisionalFormationFamily(state, formation.id)
     .filter((participant) => formationIsEngaged(state, participant.id))
     .flatMap((participant) => engagedContacts(state, participant.id));
@@ -149,13 +143,17 @@ function planEngagedCombat(
 }
 
 export function planOrder(state: GameState, command: GameCommand): OrderPlanResult {
+  const permission = commandPermission(state, command);
+  if (!permission.accepted) return rejected(permission.reason ?? "That order is not legal.");
+  const formation = selectedFormation(state);
+  if (!formation) return accepted(command);
   switch (command.type) {
-    case "move": return planMove(state, command);
-    case "fall_back": return planFallBack(state, command);
-    case "shoot": return planShoot(state, command);
-    case "charge": return planCharge(state, command);
+    case "move": return planMove(state, formation, command);
+    case "fall_back": return planFallBack(state, formation, command);
+    case "shoot": return planShoot(state, formation, command);
+    case "charge": return planCharge(state, formation, command);
     case "battle":
-    case "press": return planEngagedCombat(state, command);
+    case "press": return planEngagedCombat(state, formation, command);
     default: return accepted(command);
   }
 }

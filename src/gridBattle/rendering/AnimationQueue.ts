@@ -49,6 +49,11 @@ export class AnimationQueue {
     app.ticker.add(this.update, this);
   }
 
+  /** True while an effect is showing or waiting to show. */
+  get busy(): boolean {
+    return this.current !== null || this.queue.length > 0;
+  }
+
   setSpeed(speed: AnimationSpeed): void {
     this.speed = speed;
     if (speed === 0) this.clear();

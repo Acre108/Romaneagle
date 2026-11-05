@@ -1,4 +1,4 @@
-import { AccessibilitySystem, Application, Assets, Container, Graphics, Matrix, Point, Sprite, Text, type Texture } from "pixi.js";
+import { AccessibilitySystem, Application, Assets, Container, Graphics, Matrix, Point, Sprite, Text, type Texture, UPDATE_PRIORITY } from "pixi.js";
 import romanCenturySoldierUrl from "../../../Art/Roman/Roman Century Soldier.png";
 import basicSaxonInfantryUrl from "../../../Art/Saxon/Basic Saxon Infantry.png";
 import detailedSaxonInfantryUrl from "../../../Art/Saxon/Detailed Saxon Infantry.png";
@@ -268,6 +268,9 @@ export class BattlefieldRenderer {
   private moraleVisible = false;
   private inspectedFormationId: string | null = null;
   private activationPulseElapsedMs = 0;
+  /** Something visible changed since the last draw. */
+  private needsDraw = true;
+  private lastDrawAt = 0;
   private axesVisible = false;
   private hoveredCell: GridPosition | null = null;
   private hoveredCandidates: GridPosition[] = [];
@@ -366,6 +369,9 @@ export class BattlefieldRenderer {
     this.animationQueue = new AnimationQueue(this.app, this.effectsLayer, this.boardView.describe);
     this.app.ticker.add(this.updateMotions, this);
     this.app.ticker.add(this.updateActivationPulse, this);
+    // Pixi draws every frame by default. A turn-based board is still most of the time, so draw only when needed.
+    this.app.ticker.remove(this.app.render, this.app);
+    this.app.ticker.add(this.drawIfNeeded, this, UPDATE_PRIORITY.LOW);
     this.minimap = document.getElementById("grid-minimap") as HTMLCanvasElement | null;
     this.bindInput();
     this.applyCamera();
@@ -474,6 +480,7 @@ export class BattlefieldRenderer {
   };
 
   private readonly handlePointerMove = (event: PointerEvent): void => {
+    this.requestDraw();
     const screen = this.canvasPoint(event);
     if (this.isPanning && this.pointerId === event.pointerId && this.lastPointer) {
       const dx = screen.x - this.lastPointer.x;
@@ -499,6 +506,7 @@ export class BattlefieldRenderer {
   };
 
   private readonly handlePointerUp = (event: PointerEvent): void => {
+    this.requestDraw();
     if (this.pointerId !== event.pointerId) return;
     const screen = this.canvasPoint(event);
     const moved = this.pointerStart ? Math.hypot(screen.x - this.pointerStart.x, screen.y - this.pointerStart.y) : 0;
@@ -521,6 +529,7 @@ export class BattlefieldRenderer {
   };
 
   private readonly handlePointerLeave = (): void => {
+    this.requestDraw();
     if (this.isPanning) return;
     this.hoveredCell = null;
     this.hoveredCandidates = [];
@@ -611,6 +620,7 @@ export class BattlefieldRenderer {
   }
 
   private applyCamera(): void {
+    this.requestDraw();
     const { x, y, zoom } = this.camera.state;
     this.worldContainer.position.set(x, y);
     this.worldContainer.scale.set(zoom);
@@ -668,12 +678,14 @@ export class BattlefieldRenderer {
   }
 
   toggleAxes(): boolean {
+    this.requestDraw();
     this.axesVisible = !this.axesVisible;
     this.renderAxes();
     return this.axesVisible;
   }
 
   enqueueEvents(events: readonly GameEvent[]): void {
+    this.requestDraw();
     // A trigger can add a formation in the same command, before the next render sees it.
     if (this.state) rememberFormationNames(this.state, this.formationNames);
     updateCasualtyMarkers(this.casualtyBodyTiles, this.casualtyTurnSkulls, events);
@@ -880,6 +892,22 @@ export class BattlefieldRenderer {
       }
     }
     if (this.motions.length === 0) this.motionTrailLayer.removeChildren().forEach((child) => child.destroy());
+  };
+
+  /** Ask for the board to be drawn on the next frame. */
+  private requestDraw(): void {
+    this.needsDraw = true;
+  }
+
+  private readonly drawIfNeeded = (): void => {
+    const now = performance.now();
+    const moving = this.motions.length > 0 || (this.animationQueue?.busy ?? false);
+    // The activation pulse only fades in and out, so a lower rate looks the same. The slow redraw is a safety net.
+    const interval = this.activationPulseLayer.children.length > 0 ? 50 : 1000;
+    if (!this.needsDraw && !moving && now - this.lastDrawAt < interval) return;
+    this.needsDraw = false;
+    this.lastDrawAt = now;
+    this.app.render();
   };
 
   private readonly updateActivationPulse = (): void => {
@@ -1544,6 +1572,7 @@ export class BattlefieldRenderer {
   }
 
   render(state: GameState, orderPreview: OrderConfirmationPreview | null = this.orderPreviewOverlay.current): void {
+    this.requestDraw();
     if (this.state && this.state !== state) {
       this.casualtyBodyTiles.clear();
       this.casualtyTurnSkulls.clear();
@@ -1612,6 +1641,7 @@ export class BattlefieldRenderer {
     this.panelResizeObserver?.disconnect();
     this.app.ticker.remove(this.updateMotions, this);
     this.app.ticker.remove(this.updateActivationPulse, this);
+    this.app.ticker.remove(this.drawIfNeeded, this);
     this.animationQueue?.destroy();
     this.animationQueue = null;
     // Destroying the app loses this canvas's WebGL context for good, and Pixi hangs if it

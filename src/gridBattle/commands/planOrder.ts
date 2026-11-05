@@ -1,7 +1,8 @@
+import { simulationCopy } from "../model/simulationCopy";
 import type { Formation, GameState, OrderConfirmationPreview, PressurePreview } from "../model/types";
 import { chargeConfirmationPreview } from "../rules/charge";
 import { pressurePreview } from "../rules/combat";
-import { aggregateCombatOutcomes, blockCombatMath, contactSummaryLines } from "../rules/combatPreview";
+import { aggregateCombatOutcomes, blockCombatMath, contactSummaryLines, orderComparisonLines } from "../rules/combatPreview";
 import { oppositeDirection } from "../rules/direction";
 import { engagedContacts, engagedPressureOptions, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";
 import { planFormationMove } from "../rules/movement";
@@ -91,6 +92,29 @@ function planShoot(state: GameState, formation: Formation, command: Extract<Game
     : rejected("Target must be in the formation's forward arc, range, and line of sight.");
 }
 
+/** The middle of the 100 defence rolls stands for a typical result. */
+const TYPICAL_DEFENCE_ROLL = 50;
+
+const ORDER_LABEL = { battle: "Battle", press: "Press" } as const;
+const ORDER_NOTE = { battle: "", press: "advancing blocks stay wavering" } as const;
+
+/** This order and the other engaged order side by side, each from one typical simulation. */
+function engagedOrderComparison(
+  state: GameState,
+  formationId: string,
+  order: "battle" | "press",
+  typicalOutcome: GameState,
+): string[] {
+  const other = order === "battle" ? "press" : "battle";
+  const alternative = simulationCopy(state);
+  const fought = resolveEngagedOrder(alternative, formationId, other, { defenceRollOverride: TYPICAL_DEFENCE_ROLL }) > 0;
+  return orderComparisonLines(
+    state,
+    { label: `This ${ORDER_LABEL[order]}`, outcome: typicalOutcome, note: ORDER_NOTE[order] },
+    fought ? { label: `${ORDER_LABEL[other]} instead`, outcome: alternative, note: ORDER_NOTE[other] } : null,
+  );
+}
+
 function planEngagedCombat(
   state: GameState,
   formation: Formation,
@@ -100,7 +124,7 @@ function planEngagedCombat(
     .filter((participant) => formationIsEngaged(state, participant.id))
     .flatMap((participant) => engagedContacts(state, participant.id));
   if (contacts.length === 0) return rejected("No engaged block can fight an adjacent enemy.");
-  const validation = structuredClone(state);
+  const validation = simulationCopy(state);
   if (resolveEngagedOrder(validation, formation.id, command.type) === 0) {
     return rejected("No engaged block can fight an adjacent enemy.");
   }
@@ -119,7 +143,7 @@ function planEngagedCombat(
     appendMath(contact.defenderId, blockCombatMath(preview, "defender"));
   }
   const outcomes = Array.from({ length: 100 }, (_, defenceRoll) => {
-    const simulated = structuredClone(state);
+    const simulated = simulationCopy(state);
     resolveEngagedOrder(simulated, formation.id, command.type, { defenceRollOverride: defenceRoll });
     return simulated;
   });
@@ -127,6 +151,7 @@ function planEngagedCombat(
   return accepted(command, {
     kind: "combat",
     title: `Confirm ${command.type}`,
+    comparison: engagedOrderComparison(state, formation.id, command.type, outcomes[TYPICAL_DEFENCE_ROLL]!),
     detail: command.type === "press"
       ? "Blocks that advance stay wavering through your next activation. Enemy blocks still counter. ! is certain; ? is possible. Hover for percentages."
       : "Highlighted tiles show contacts, retreats, removals, refills, and gap-closing blocks. ! is certain; ? is possible. Hover for percentages.",

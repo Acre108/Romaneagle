@@ -1,12 +1,10 @@
 import { ROMAN_FORMATION_BY_ID, type RomanFormationDefinition } from "../../scenario/Roster";
 import { getUnitArchetype, type UnitArchetypeProfile } from "../../units/UnitArchetypes";
 import { createFormation, deployFormation, rectangularPositions } from "../model/battleStateFactory";
-import { BALANCE, GRID_COLUMNS, GRID_ROWS } from "../model/config";
-import { buildingCellAt, terrainAt, terrainElevationAt, terrainObjectsAt } from "../model/terrain";
+import { BALANCE } from "../model/config";
 import type { Character, Formation, FormationMode, GameState, GridPosition } from "../model/types";
 import { modelCapacity } from "../model/unitStats";
 import { archetypeCohesion, archetypeUnitProfile } from "./archetypeUnits";
-import { manhattanDistance } from "../rules/direction";
 
 interface DeploymentLayout {
   infantry: readonly (readonly GridPosition[])[];
@@ -157,54 +155,78 @@ export function applyCampaignRomanDeployment(
   if (layout.wallArchers) addWallArchers(state, layout.wallArchers);
 }
 
-const TEST_DEPLOYMENT_WIDTHS = [5, 4, 3, 7, 10] as const;
+const TEST_FORMATION_WIDTH = 4;
+const TEST_LINE_GAP = 1;
+const TEST_FORMATIONS_PER_LINE = 4;
+const TEST_SUPPORT_WIDTH = 16;
+const TEST_WING_INSET = 1;
 
-function isOpenDeploymentCell(state: GameState, position: GridPosition): boolean {
-  const terrain = terrainAt(state, position);
-  return (terrain === "clear" || terrain === "road")
-    && !buildingCellAt(state, position)
-    && terrainElevationAt(state, position) === 0
-    && terrainObjectsAt(state, position).length === 0;
+interface TestUnit {
+  id: string;
+  name: string;
+  strength: number;
+  archetypeId: RomanFormationDefinition["archetypeId"];
 }
 
-function testDeploymentFootprint(state: GameState, blockCount: number, gap: boolean): GridPosition[] | null {
-  const blocks = Object.values(state.blocks);
-  const free = (position: GridPosition): boolean => isOpenDeploymentCell(state, position)
-    && blocks.every((block) => {
-      const distance = manhattanDistance(block.position, position);
-      return distance > 1 || (distance === 1 && !gap && block.factionId === "roman");
-    });
-  for (const width of TEST_DEPLOYMENT_WIDTHS) {
-    const depth = Math.ceil(blockCount / width);
-    for (let y = GRID_ROWS - depth; y >= 0; y -= 1) {
-      for (let x = 0; x + width <= GRID_COLUMNS; x += 1) {
-        const positions = rectangularPositions(x, y, width, depth).slice(0, blockCount);
-        if (positions.every(free)) return positions;
-      }
-    }
-  }
-  return null;
+function testBlockCount(unit: TestUnit): number {
+  const archetype = getUnitArchetype(unit.archetypeId);
+  const mode = campaignFormationMode(archetype);
+  const capacity = Math.max(1, Math.floor(BALANCE.formationModelSpace[mode] / archetypeUnitProfile(archetype, mode).modelSize));
+  return Math.ceil(unit.strength / capacity);
 }
 
-/** Deploys sandbox formations from the southern edge upward, on open ground and clear of the enemy. */
-export function applyTestRomanDeployment(
+/** Lays formations side by side in one row, centred on the field, and returns the row below them. */
+function placeTestRow(
   state: GameState,
-  units: readonly { id: string; name: string; strength: number; archetypeId: RomanFormationDefinition["archetypeId"] }[],
-): void {
-  removeRomanDeployments(state);
-  for (const unit of units) {
-    const archetype = getUnitArchetype(unit.archetypeId);
-    const mode = campaignFormationMode(archetype);
-    const capacity = Math.max(1, Math.floor(BALANCE.formationModelSpace[mode] / archetypeUnitProfile(archetype, mode).modelSize));
-    const blockCount = Math.ceil(unit.strength / capacity);
-    const positions = testDeploymentFootprint(state, blockCount, true) ?? testDeploymentFootprint(state, blockCount, false);
-    if (!positions) throw new Error(`The test battlefield has no room for ${unit.name}.`);
-    addFormation(state, {
-      id: unit.id,
-      name: unit.name,
-      count: unit.strength,
-      archetypeId: unit.archetypeId,
-      companion: { id: `${unit.id}-captain`, name: `${unit.name} Captain` },
-    }, positions);
+  units: readonly TestUnit[],
+  width: number,
+  top: number,
+  place: (unit: TestUnit, positions: readonly GridPosition[]) => void,
+): number {
+  const sized = units.map((unit) => {
+    const blocks = testBlockCount(unit);
+    const columns = Math.min(width, blocks);
+    return { unit, blocks, columns, depth: Math.ceil(blocks / columns) };
+  });
+  const total = sized.reduce((sum, entry) => sum + entry.columns, 0) + TEST_LINE_GAP * (sized.length - 1);
+  let x = Math.floor((state.battlefield.width - total) / 2);
+  for (const { unit, blocks, columns, depth } of sized) {
+    place(unit, rectangularPositions(x, top, columns, depth).slice(0, blocks));
+    x += columns + TEST_LINE_GAP;
   }
+  return top + Math.max(0, ...sized.map((entry) => entry.depth)) + TEST_LINE_GAP;
+}
+
+/** Deploys sandbox formations as a battle line: infantry in front, missiles behind it, cavalry on the wings. */
+export function applyTestRomanDeployment(state: GameState, units: readonly TestUnit[], frontRow: number): void {
+  removeRomanDeployments(state);
+  const place = (unit: TestUnit, positions: readonly GridPosition[]): void => addFormation(state, {
+    id: unit.id,
+    name: unit.name,
+    count: unit.strength,
+    archetypeId: unit.archetypeId,
+    companion: { id: `${unit.id}-captain`, name: `${unit.name} Captain` },
+  }, positions);
+  const wings = units.filter((unit) => getUnitArchetype(unit.archetypeId).type === "cavalry");
+  const support = units.filter((unit) => {
+    const { type } = getUnitArchetype(unit.archetypeId);
+    return type === "archers" || type === "artillery";
+  });
+  const line = units.filter((unit) => !wings.includes(unit) && !support.includes(unit));
+
+  let row = frontRow;
+  for (let index = 0; index < line.length; index += TEST_FORMATIONS_PER_LINE) {
+    row = placeTestRow(state, line.slice(index, index + TEST_FORMATIONS_PER_LINE), TEST_FORMATION_WIDTH, row, place);
+  }
+  placeTestRow(state, support, TEST_SUPPORT_WIDTH, row, place);
+
+  const wingTops = [frontRow, frontRow];
+  wings.forEach((unit, index) => {
+    const side = index % 2;
+    const blocks = testBlockCount(unit);
+    const depth = Math.ceil(blocks / TEST_FORMATION_WIDTH);
+    const x = side === 0 ? TEST_WING_INSET : state.battlefield.width - TEST_WING_INSET - TEST_FORMATION_WIDTH;
+    place(unit, rectangularPositions(x, wingTops[side]!, TEST_FORMATION_WIDTH, depth).slice(0, blocks));
+    wingTops[side]! += depth + TEST_LINE_GAP;
+  });
 }

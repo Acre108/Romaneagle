@@ -98,6 +98,34 @@ describe("grid battle routing", () => {
     expect(remainingActivations(state, "roman")).toBe(1);
   });
 
+  it("never rallies a formation at a quarter of its men or fewer, and it keeps running", () => {
+    const state = blankState(8, 16);
+    const routed = addFormation(state, "roman", [{ x: 3, y: 2 }], "north", "roman");
+    addFormation(state, "saxon", [{ x: 3, y: 0 }], "south", "saxon");
+    state.formations.roman!.unit.movement = 1;
+    state.formations.roman!.initialModelCount = state.blocks["roman-b1"]!.models * 4;
+    rout(routed);
+
+    for (let activation = 0; activation < 6; activation += 1) {
+      expect(resolveRoutingFormationActivation(state, routed.id).rallied).toBe(false);
+    }
+    expect(state.formations.roman!.status).toBe("routed");
+    expect(state.blocks["roman-b1"]!.position.y).toBe(8);
+  });
+
+  it("still rallies a formation just above a quarter of its men", () => {
+    const state = blankState(8, 16);
+    const routed = addFormation(state, "roman", [{ x: 3, y: 2 }], "north", "roman");
+    addFormation(state, "saxon", [{ x: 3, y: 0 }], "south", "saxon");
+    state.formations.roman!.unit.movement = 1;
+    state.formations.roman!.initialModelCount = state.blocks["roman-b1"]!.models * 4 - 1;
+    rout(routed);
+
+    resolveRoutingFormationActivation(state, routed.id);
+    resolveRoutingFormationActivation(state, routed.id);
+    expect(resolveRoutingFormationActivation(state, routed.id).rallied).toBe(true);
+  });
+
   it("requires three safe routing activations to rally without a leader", () => {
     const state = blankState(20, 30);
     const routed = addFormation(state, "roman", [{ x: 5, y: 5 }], "north", "roman");
@@ -165,6 +193,21 @@ describe("grid battle routing", () => {
       type: "formation_escaped",
       message: expect.stringContaining("trapped"),
     }));
+  });
+
+  it("disperses a formation too weak to rally when it is walled in, even with no enemy near", () => {
+    const state = blankState(9, 9);
+    const routed = addFormation(state, "roman", [{ x: 2, y: 2 }], "north", "roman");
+    addFormation(state, "saxon", [{ x: 8, y: 8 }], "north", "saxon");
+    state.formations.roman!.initialModelCount = state.blocks["roman-b1"]!.models * 4;
+    for (const position of [{ x: 1, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }, { x: 2, y: 1 }]) {
+      setMapTerrain(state.battlefield, position, "impassable");
+    }
+    rout(routed);
+
+    expect(resolveRoutingFormationActivation(state, routed.id).formationEscaped).toBe(false);
+    expect(resolveRoutingFormationActivation(state, routed.id).formationEscaped).toBe(true);
+    expect(state.formations[routed.id]).toBeUndefined();
   });
 
   it("returns to a valid phase after routing-only rounds resolve", () => {

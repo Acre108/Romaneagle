@@ -7,6 +7,7 @@ import { addPosition, directionVector, manhattanDistance, oppositeDirection } fr
 import { provisionalFormationFamily, recalculateFormationConnectivity } from "./splitting";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
 import { clearFormationBrace } from "./brace";
+import { familyRemainingRatio } from "./morale";
 
 const ROUTE_DIRECTIONS: readonly Direction[] = ["north", "east", "south", "west"];
 
@@ -351,8 +352,9 @@ export function resolveRoutingFormationActivation(state: GameState, formationId:
     ? BALANCE.routedRallyActivationsWithLeader
     : BALANCE.routedRallyActivationsWithoutLeader;
   const safe = nearestEnemyDistance(blocks, enemyBlocks(state, initialFormation.factionId)) >= BALANCE.routedRallyDistance;
-  const rallied = safe && routingActivations >= rallyAfter;
-  const stalledActivations = movedSteps === 0 && !safe
+  const canRally = familyRemainingRatio(state, family) > BALANCE.casualtyRoutRemainingRatio;
+  const rallied = canRally && safe && routingActivations >= rallyAfter;
+  const stalledActivations = movedSteps === 0 && (!safe || !canRally)
     ? Math.max(...family.map((formation) => formation.routingStalledActivations ?? 0)) + 1
     : 0;
   for (const formation of family) formation.routingStalledActivations = stalledActivations || undefined;

@@ -163,6 +163,36 @@ describe("grid-battle isometric presentation", () => {
     expect(pickIsoTile(local, 20, 14, ISO_METRICS)).toEqual(tile);
   });
 
+  it("reframes an untouched camera when the view resizes, and keeps a moved camera on the same spot", () => {
+    const bounds = { minX: -700, minY: -80, maxX: 1000, maxY: 820 };
+    const untouched = new IsoCamera({ width: 1280, height: 760 }, bounds);
+    const opening = untouched.state.zoom;
+    untouched.setViewport({ width: 1920, height: 1140 });
+    expect(untouched.state.zoom).toBeGreaterThan(opening);
+
+    const moved = new IsoCamera({ width: 1280, height: 760 }, bounds);
+    moved.panBy(-40, 30);
+    const zoom = moved.state.zoom;
+    const centre = moved.screenToWorld({ x: 640, y: 380 });
+    moved.setViewport({ width: 900, height: 700 });
+    expect(moved.state.zoom).toBe(zoom);
+    expect(moved.screenToWorld({ x: 450, y: 350 }).x).toBeCloseTo(centre.x);
+    expect(moved.screenToWorld({ x: 450, y: 350 }).y).toBeCloseTo(centre.y);
+  });
+
+  it("opens on the armies only when the whole map would be too small to read", () => {
+    const armies = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+    const small = new IsoCamera({ width: 1280, height: 760 }, { minX: -100, minY: -100, maxX: 300, maxY: 300 });
+    const whole = small.state.zoom;
+    small.frameOpening(armies);
+    expect(small.state.zoom).toBe(whole);
+
+    const huge = new IsoCamera({ width: 1280, height: 760 }, { minX: -9000, minY: -9000, maxX: 9000, maxY: 9000 });
+    const hugeWhole = huge.state.zoom;
+    huge.frameOpening(armies);
+    expect(huge.state.zoom).toBeGreaterThan(hugeWhole);
+  });
+
   it("increases depth consistently toward the foreground", () => {
     expect(calculateIsoDepth(7, 7)).toBeGreaterThan(calculateIsoDepth(7, 6));
     expect(calculateIsoDepth(8, 6)).toBeGreaterThan(calculateIsoDepth(7, 6));

@@ -40,9 +40,11 @@ export const DEFAULT_TEST_UNIT_IDS: readonly string[] = TEST_UNIT_OPTIONS
   .filter((option) => DEFAULT_TEST_ARCHETYPE_IDS.has(option.archetypeId))
   .map((option) => option.id);
 
-/** Mirrors the Saxon formations in the prototype scenario, which the sandbox battle uses. */
+/** Mirrors the Saxon line in the open-field scenario, which the sandbox battle uses. */
 export const TEST_SAXON_SPECS: readonly TestOppositionOption[] = [
-  { id: "great-warband", name: "Great Warband", role: "heavy infantry" },
   { id: "loose-warband", name: "Loose Warband", role: "light infantry" },
+  { id: "left-warband", name: "Left Warband", role: "medium infantry" },
+  { id: "great-warband", name: "Great Warband", role: "heavy infantry" },
+  { id: "right-warband", name: "Right Warband", role: "medium infantry" },
   { id: "saxon-cavalry", name: "Saxon Cavalry", role: "light cavalry" },
 ];

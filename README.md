@@ -43,7 +43,7 @@ Every mission uses the established briefing, tactical map, deployment, companion
 | Click a block | Select its formation |
 | Click a selected formation block again | Select that individual block |
 | Click a highlighted square or enemy | Confirm the current action |
-| Mouse wheel | Zoom toward the pointer (0.5×–1.75×) |
+| Mouse wheel | Zoom toward the pointer (0.25×–1.75×) |
 | Middle-mouse drag | Pan the battlefield |
 | Hold `Space` and left-drag | Pan the battlefield |
 | `F` | Frame the entire battlefield |
@@ -79,7 +79,7 @@ screen y = (grid x + grid y) × 24
 
 Tiles are therefore 96×48 diamonds. North appears upper-right, east lower-right, south lower-left, and west upper-left. Pointer picking first converts the canvas pointer through the camera transform, applies the inverse projection, then tests nearby candidates against the diamond equation rather than rounding blindly.
 
-The camera owns only world-container translation and uniform scale. Zoom is cursor-centred and clamped to 0.5×–1.75×; bounds always leave part of the map recoverable. The minimap remains top-down and uses model grid coordinates directly.
+The camera owns only world-container translation and uniform scale. The canvas always fills its panel and resizes with the window. A battle opens on the whole map when it fits at 0.4× zoom or closer, and otherwise on the armies. Resizing reframes an untouched camera and otherwise keeps the same spot centred. Zoom is cursor-centred and clamped to 0.25×–1.75×; bounds always leave part of the map recoverable. The minimap remains top-down and uses model grid coordinates directly.
 
 Terrain is built once as static diamond graphics. Blocks, shadows, exposed formation edges, soldiers, characters, and effects are projected independently so figures remain upright. Moving blocks interpolate fractional grid coordinates and project each animation frame. Rear-to-front order uses `(gridX + gridY) × 10,000`, followed by stable grid and local-priority tie-breakers.
 
@@ -99,7 +99,7 @@ Three things matter, in this order:
 
 1. **Position.** Getting the right formation to the right place at the right time is the player's main choice. Pressure is not a stored track; it is the check that turns position into a shove.
 2. **Morale.** Shoves and bad angles cost a formation its morale until it routs. This is how good movement physically shifts the battlefield.
-3. **Strength.** Casualties matter and are permanent, but killing takes far longer than breaking. A routed formation disrupts the line around it and can rally; a dead block just leaves a gap.
+3. **Strength.** Casualties matter and are permanent, but killing takes far longer than breaking. A routed formation disrupts the line around it and can rally unless too few men remain; a dead block just leaves a gap.
 
 ### Movement, facing, and support
 
@@ -159,9 +159,11 @@ Morale losses are charged per order, not per file, so frontage cannot multiply t
 | Most lost in one order, apart from a leader's death | -5 |
 | Leader lost | -3 |
 
-Hold recovers 1 morale. At 3 or below a formation is breaking; at 0 it routs. Routers run automatically, pour through friendly blocks (which swap places with them and waver), and rally if they get clear, but enemies or impassable ground can trap them until they disperse. A routed formation counts as broken for objectives until it rallies.
+Hold recovers 1 morale. At 3 or below a formation is breaking; at 0 it routs. Routers run automatically, pour through friendly blocks (which swap places with them and waver), and rally if they get clear, but enemies or impassable ground can trap them until they disperse. A formation at 25% of its men or fewer never rallies: it keeps running until it leaves the field or disperses. A routed formation counts as broken for objectives until it rallies.
 
 Every player order first passes through one non-mutating planner. Simple orders execute immediately, while Charge, Shoot, Battle, Press, and formation-changing movement pause on the same board confirmation. The combat preview shows both totals, net pressure, expected damage or retreat quality, retreat destinations, possible cascade, compression risk, and local character modifiers. `!` marks fixed destinations and `?` marks positions that depend on combat resolution.
+
+The forecast gives each formation's morale change with its reasons, for example `Morale 9 → 7 (−2 flanked)`. Battle and Press previews also show one line for the other order, so the choice is a single comparison. Formation labels on the board show facing as an arrow (↗ north, ↘ east, ↙ south, ↖ west). During your turn, formations that can still act have a gold outline, and any formation that has acted this round is dimmed. The combat log groups formations that end their turn without acting into one line per side, for example "Romans waited: Lanciarii, Plumbatarii."
 
 Every melee contact also resolves a small deterministic casualty check. Pressure decides whether the defender holds or retreats; damage decides how many soldiers die:
 
@@ -256,11 +258,11 @@ The campaign calls a stable `Game` adapter and receives its existing campaign ba
 
 New battle code lives under `src/gridBattle`:
 
-- `ai`: deterministic formation activation planning and tactical target selection
+- `ai`: deterministic formation activation planning and tactical target selection. The planner tries orders directly on its own copy of the battle and never builds the player's preview.
 - `model`: serialisable state, occupancy, and central balance constants
 - `scenario`: deterministic prototype formations plus dedicated Hadrian's Wall, Blackwater Ford, and Vindolanda battlefield factories
 - `rules`: movement, pressure, ranged combat, retreat, splitting, reform, merge, charge, melee, duels, and turns
-- `commands`: typed commands, pure order planning on cloned state, confirmation policy, and the sole live-state mutation dispatcher
+- `commands`: typed commands, pure order planning on cloned state, confirmation policy, and the sole live-state mutation dispatcher. Simulated copies (`model/simulationCopy.ts`) share the battlefield map, because no battle rule writes to it, and start with an empty event log.
 - `rendering`: PixiJS layers, fixed isometric projection/picking/depth/camera modules, and an event-consuming animation queue
 - `app`: DOM panels, input routing, lifecycle, and campaign conclusion adapter
 
@@ -273,8 +275,9 @@ Press `D` to display block IDs, grid/projected coordinates, depth keys, formatio
 ## Known edge cases
 
 - War-council and sandbox cards show only what works in battle: strength, armour, movement, and real ranged weapons. Traits (Tortoise, Disciplined, Deep order, Flank charge), catalogue equipment such as plumbatae on infantry, and archetype specialities are removed until each has a battle rule.
+- The sandbox (Field Trials) is fought on a 32 × 22 open field with no terrain: the chosen Romans deploy as a line with missile troops behind and cavalry on the wings, facing a fixed line of five Saxon formations across eight empty rows. Mission battles keep their own maps.
 - Deliberately left out of the morale and strength rules until they are playtested: scaling melee damage by a block's remaining models and making volleys cause wavering instead of relying on casualties.
-- The TEST SCENARIO keeps the original demonstration map and its three Saxon formations, and deploys the Roman formations chosen for it. Its ballistarii fight as light infantry with their ranged weapon, because the grid battle has no separate artillery rules yet.
+- Its ballistarii fight as light infantry with their ranged weapon, because the grid battle has no separate artillery rules yet.
 - Charge continuation models a straight breakthrough, but offers no optional mid-charge stop prompt yet.
 - Reform moves one block one square; it does not preview a complete reconstructed formation shape.
 - Split feedback uses a short text/edge flash rather than a persistent history view of the severed connection.

@@ -77,7 +77,7 @@ export class AnimationQueue {
           ? `${event.projectileKind?.toUpperCase() ?? "MISSILE"} VOLLEY`
         : isCasualty
           ? `-${event.casualties ?? 0} ${(event.casualties ?? 0) === 1 ? "CASUALTY" : "CASUALTIES"}`
-          : this.describe(event.message),
+          : event.type === "pressure_applied" ? event.pressureResult?.toUpperCase() ?? "" : this.describe(event.message),
       style: {
         fontFamily: "Arial",
         fontSize: isSplit || isCasualty ? 22 : 13,

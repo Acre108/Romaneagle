@@ -1,3 +1,4 @@
+import { simulationCopy } from "../model/simulationCopy";
 import {
   getRangedWeaponProfile,
   rangedProtectionMultiplier,
@@ -406,7 +407,7 @@ export function rangedConfirmationPreview(
   const formation = state.formations[formationId];
   const defender = state.blocks[defenderId];
   if (!preview || !formation || !defender) return null;
-  const outcome = structuredClone(state);
+  const outcome = simulationCopy(state);
   resolveRangedVolley(outcome, formationId, defenderId);
   return {
     kind: "combat",

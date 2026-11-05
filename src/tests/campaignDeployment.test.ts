@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mapTileAt } from "../gridBattle/model/battlefieldMap";
 import { scenarioFactoryForMission } from "../gridBattle/scenario/campaignScenario";
-import { createPrototypeGridScenario } from "../gridBattle/scenario/prototypeScenario";
+import { createOpenFieldScenario } from "../gridBattle/scenario/openFieldScenario";
 import { ROMAN_FORMATION_BY_ID } from "../scenario/Roster";
 import type { GameState } from "../gridBattle/model/types";
 import { formationModelCount } from "../gridBattle/model/unitStats";
@@ -82,9 +82,9 @@ describe("campaign battlefield deployment", () => {
     expect(JSON.stringify(scenarioFactoryForMission(missionId)())).toBe(JSON.stringify(first));
   });
 
-  it("gives the sandbox the prototype battlefield, with its ambush trigger", () => {
+  it("gives the sandbox the open field, with no triggers", () => {
     const sandbox = scenarioFactoryForMission("test-field-trials")();
-    expect(JSON.stringify(sandbox)).toBe(JSON.stringify(createPrototypeGridScenario()));
-    expect(sandbox.battlefield.triggers.some((trigger) => trigger.id === "eastern-road-ambush")).toBe(true);
+    expect(JSON.stringify(sandbox.battlefield)).toBe(JSON.stringify(createOpenFieldScenario().battlefield));
+    expect(sandbox.battlefield.triggers).toEqual([]);
   });
 });

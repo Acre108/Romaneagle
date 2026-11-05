@@ -1,4 +1,4 @@
-import type { GameEvent, PressureResult } from "../model/types";
+import type { FactionId, GameEvent, GameEventDetail, PressureResult } from "../model/types";
 import { blockFormationId, formationDisplayName, withFormationNames } from "./displayNames";
 import { originalFormationId } from "./splitting";
 
@@ -50,6 +50,22 @@ interface ActivationTally {
   steps: Map<string, number>;
   finalFacing: Map<string, string>;
   actor: string | null;
+  ended: Extract<GameEventDetail, { kind: "activation_ended" }> | null;
+}
+
+/** An activation in which nothing happened: shown grouped with the faction's other waits that round. */
+interface Wait {
+  factionId: FactionId | null;
+  name: string;
+}
+
+interface LogItem {
+  entry: BattleLogEntry;
+  wait?: Wait;
+}
+
+function defaultFactionLabel(factionId: FactionId): string {
+  return factionId === "roman" ? "Romans" : "Saxons";
 }
 
 function addToCount<K>(counts: Map<K, number>, key: K, amount: number): void {
@@ -68,8 +84,12 @@ function recordEvent(tally: ActivationTally, event: GameEvent, names: ReadonlyMa
   const detail = event.detail;
   switch (event.type) {
     case "activation_ended":
-      if (formationId) tally.actor = formationId;
-      else recordPlainEvent(tally, event, named);
+      if (formationId) {
+        tally.actor = formationId;
+        tally.ended = detail?.kind === "activation_ended" ? detail : null;
+      } else {
+        recordPlainEvent(tally, event, named);
+      }
       return;
     case "engaged_order_resolved":
       if (!formationId) recordPlainEvent(tally, event, named);
@@ -116,14 +136,21 @@ function recordEvent(tally: ActivationTally, event: GameEvent, names: ReadonlyMa
   }
 }
 
-function composeEntry(tally: ActivationTally, names: ReadonlyMap<string, string>): BattleLogEntry | null {
-  const { headlines, details, moraleNotes, losses, results, steps, finalFacing, actor } = tally;
+function composeEntry(tally: ActivationTally, names: ReadonlyMap<string, string>): LogItem | null {
+  const { headlines, details, moraleNotes, losses, results, steps, finalFacing, actor, ended } = tally;
   for (const [key, count] of steps) {
     const facing = finalFacing.get(key);
     headlines.unshift(`${formationDisplayName(names, key)} moved ${squares(count)}${facing ? `, facing ${facing}` : ""}.`);
   }
   if (headlines.length === 0 && actor && details.length === 0 && moraleNotes.length === 0 && losses.size === 0) {
-    headlines.push(`${formationDisplayName(names, actor)} held its ground.`);
+    const name = formationDisplayName(names, actor);
+    if (ended?.moraleRecovered !== undefined) {
+      const headline = ended.moraleRecovered > 0
+        ? `${name} held and recovered ${ended.moraleRecovered} morale.`
+        : `${name} held; its morale is already full.`;
+      return { entry: { headline, details: [], moraleNotes: [] } };
+    }
+    return { entry: { headline: `${name} waited.`, details: [], moraleNotes: [] }, wait: { factionId: ended?.factionId ?? null, name } };
   }
   for (const [key, tallyByResult] of results) {
     const words = RESULT_WORDS.flatMap(([result, word]) => {
@@ -138,14 +165,16 @@ function composeEntry(tally: ActivationTally, names: ReadonlyMap<string, string>
   const headline = headlines.shift() ?? details.shift() ?? moraleNotes[0];
   if (!headline) return null;
   return {
-    headline,
-    details: [...headlines, ...details],
-    moraleNotes: moraleNotes.filter((note) => note !== headline),
+    entry: {
+      headline,
+      details: [...headlines, ...details],
+      moraleNotes: moraleNotes.filter((note) => note !== headline),
+    },
   };
 }
 
 /** Turns one activation's raw events into a line a player can read. */
-function summarise(events: readonly GameEvent[], names: ReadonlyMap<string, string>): BattleLogEntry | null {
+function summarise(events: readonly GameEvent[], names: ReadonlyMap<string, string>): LogItem | null {
   const tally: ActivationTally = {
     headlines: [],
     details: [],
@@ -155,27 +184,45 @@ function summarise(events: readonly GameEvent[], names: ReadonlyMap<string, stri
     steps: new Map(),
     finalFacing: new Map(),
     actor: null,
+    ended: null,
   };
   for (const event of events) recordEvent(tally, event, names);
   return composeEntry(tally, names);
 }
 
-/** The battle so far, newest first, one entry per activation. */
+/**
+ * The battle so far, newest first, one entry per activation. Formations that only ended
+ * their activation are gathered into one "waited" line per faction and round, placed at the latest wait.
+ */
 export function battleLogEntries(
   eventLog: readonly GameEvent[],
   names: ReadonlyMap<string, string>,
   limit = DEFAULT_ENTRY_LIMIT,
+  factionLabel: (factionId: FactionId) => string = defaultFactionLabel,
 ): BattleLogEntry[] {
   const entries: BattleLogEntry[] = [];
+  const waits = new Map<FactionId, { entry: BattleLogEntry; names: string[] }>();
   let group: GameEvent[] = [];
   const flush = (): void => {
-    const entry = summarise(group, names);
-    if (entry) entries.push(entry);
+    const item = summarise(group, names);
     group = [];
+    if (!item) return;
+    const factionId = item.wait?.factionId;
+    if (!item.wait || !factionId) {
+      entries.push(item.entry);
+      return;
+    }
+    const previous = waits.get(factionId);
+    if (previous) entries.splice(entries.indexOf(previous.entry), 1);
+    const waited = [...(previous?.names ?? []), item.wait.name];
+    const entry: BattleLogEntry = { headline: `${factionLabel(factionId)} waited: ${waited.join(", ")}.`, details: [], moraleNotes: [] };
+    waits.set(factionId, { entry, names: waited });
+    entries.push(entry);
   };
   for (const event of eventLog) {
     if (event.type === "round_started") {
       flush();
+      waits.clear();
       entries.push({ headline: event.message.split(".")[0] + ".", details: [], moraleNotes: [] });
       continue;
     }

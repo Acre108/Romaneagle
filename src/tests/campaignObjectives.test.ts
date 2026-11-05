@@ -88,11 +88,11 @@ describe("campaign mission objectives", () => {
       .toBe("saxonVictory");
   });
 
-  it("keeps the prototype test scenario ongoing even though its roster ids differ from grid ids", () => {
+  it("keeps the sandbox battle ongoing even though its roster ids differ from grid ids", () => {
     const state = scenarioFactoryForMission("test-field-trials", ["test-field-century"])();
     const evaluation = objectiveDefinitionForMission("test-field-trials", ["test-field-century"]).evaluate(state);
 
     expect(evaluation.outcome).toBe("ongoing");
-    expect(evaluation.progress[0]).toMatchObject({ value: "0 / 3", state: "pending" });
+    expect(evaluation.progress[0]).toMatchObject({ value: "0 / 5", state: "pending" });
   });
 });

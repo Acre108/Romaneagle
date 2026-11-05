@@ -6,7 +6,6 @@ import { blocksAt, inBounds } from "../gridBattle/model/occupancy";
 import { formationIsEngaged } from "../gridBattle/rules/engagement";
 import { connectedComponents } from "../gridBattle/rules/splitting";
 import { scenarioFactoryForMission } from "../gridBattle/scenario/campaignScenario";
-import { createPrototypeGridScenario } from "../gridBattle/scenario/prototypeScenario";
 import { DEFAULT_TEST_UNIT_IDS, TEST_SAXON_SPECS, TEST_UNIT_OPTIONS } from "../scenario/TestScenario";
 
 function deploy(ids: readonly string[]) {
@@ -69,11 +68,7 @@ describe("test scenario deployment", () => {
   });
 
   it("lists exactly the Saxon formations that take the field", () => {
-    const saxonIds = Object.values(createPrototypeGridScenario().formations)
-      .filter((formation) => formation.factionId === "saxon")
-      .map((formation) => formation.id)
-      .sort();
-    expect(TEST_SAXON_SPECS.map((spec) => spec.id).sort()).toEqual(saxonIds);
+    const saxonIds = TEST_SAXON_SPECS.map((spec) => spec.id).sort();
     const fielded = Object.values(deploy(DEFAULT_TEST_UNIT_IDS).formations)
       .filter((formation) => formation.factionId === "saxon")
       .map((formation) => formation.id)

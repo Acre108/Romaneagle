@@ -1,6 +1,8 @@
 import type {
   CombatBlockDamagePreview,
+  FactionId,
   GameState,
+  MoraleReason,
   GridPosition,
   OrderPreviewTile,
   PressurePreview,
@@ -102,7 +104,41 @@ function familyMorale(state: GameState, originalId: string): FamilyMorale {
   };
 }
 
-function moraleText(before: FamilyMorale, after: readonly FamilyMorale[]): string {
+const MORALE_REASON_LABELS: Readonly<Record<MoraleReason, string>> = {
+  pushed: "pushed",
+  flanked: "flanked",
+  rear: "rear attack",
+  outnumbered: "outnumbered",
+  losses: "losses",
+  too_few: "too few left",
+  neighbour_routed: "neighbour routed",
+  leader_lost: "leader lost",
+};
+
+/** Each morale loss a simulation caused, as "−2 flanked", keyed by original formation. */
+function moraleLossLabels(before: GameState, outcome: GameState): Map<string, string[]> {
+  const labels = new Map<string, string[]>();
+  for (const event of outcome.eventLog) {
+    if (event.id < before.nextEventId || event.detail?.kind !== "morale") continue;
+    const formationId = event.formationIds?.[0];
+    if (!formationId) continue;
+    const key = originalFormationId(formationId);
+    const label = `\u2212${event.detail.lost} ${event.detail.reasons.map((reason) => MORALE_REASON_LABELS[reason]).join(" + ")}`;
+    labels.set(key, [...(labels.get(key) ?? []), label]);
+  }
+  return labels;
+}
+
+/** Reasons found in every outcome read plainly; reasons only some outcomes reach end in "?". */
+function moraleReasonText(perOutcome: readonly (readonly string[])[]): string {
+  const ordered: string[] = [];
+  for (const labels of perOutcome) for (const label of labels) if (!ordered.includes(label)) ordered.push(label);
+  if (ordered.length === 0) return "";
+  const text = ordered.map((label) => perOutcome.every((labels) => labels.includes(label)) ? label : `${label}?`);
+  return ` (${text.join(", ")})`;
+}
+
+function moraleText(before: FamilyMorale, after: readonly FamilyMorale[], reasons = ""): string {
   if (before.routed) return "Already routing";
   const values = after.map((entry) => entry.morale);
   const low = Math.min(...values);
@@ -112,7 +148,7 @@ function moraleText(before: FamilyMorale, after: readonly FamilyMorale[]): strin
   const verdict = routs === 0 ? "" : routs === after.length ? " \u00b7 ROUTS" : " \u00b7 may rout";
   return low === before.morale && high === before.morale
     ? `Morale ${before.morale}${verdict}`
-    : `Morale ${before.morale} \u2192 ${afterText}${verdict}`;
+    : `Morale ${before.morale} \u2192 ${afterText}${reasons}${verdict}`;
 }
 
 /**
@@ -133,6 +169,7 @@ export function combatForecast(before: GameState, outcomes: readonly GameState[]
     results.set(originalId, tally);
   }
   const originalIds = [...new Set(Object.keys(before.formations).map(originalFormationId))];
+  const lossLabels = outcomes.map((outcome) => moraleLossLabels(before, outcome));
   const rows: { enemy: boolean; text: string }[] = [];
   for (const originalId of originalIds) {
     const start = familyMorale(before, originalId);
@@ -147,10 +184,57 @@ export function combatForecast(before: GameState, outcomes: readonly GameState[]
     });
     rows.push({
       enemy: member.factionId !== before.activeFactionId,
-      text: [`${name}: ${moraleText(start, after)}`, words.join(", ")].filter(Boolean).join(" \u00b7 "),
+      text: [
+        `${name}: ${moraleText(start, after, moraleReasonText(lossLabels.map((labels) => labels.get(originalId) ?? [])))}`,
+        words.join(", "),
+      ].filter(Boolean).join(" \u00b7 "),
     });
   }
   return rows.sort((a, b) => Number(b.enemy) - Number(a.enemy)).map((row) => row.text);
+}
+
+const FACTION_PLURAL: Readonly<Record<FactionId, [string, string]>> = {
+  roman: ["Roman", "Romans"],
+  saxon: ["Saxon", "Saxons"],
+};
+
+/** "~3 Saxons and ~1 Roman fall" for one typical outcome; men who flee the field count as fallen. */
+export function typicalLossesText(before: GameState, outcome: GameState): string {
+  const lost = new Map<FactionId, number>();
+  for (const block of Object.values(before.blocks)) {
+    const remaining = outcome.blocks[block.id]?.models ?? 0;
+    if (remaining < block.models) lost.set(block.factionId, (lost.get(block.factionId) ?? 0) + block.models - remaining);
+  }
+  const order: FactionId[] = before.activeFactionId === "roman" ? ["saxon", "roman"] : ["roman", "saxon"];
+  const parts = order.map((factionId) => {
+    const count = lost.get(factionId) ?? 0;
+    const [one, many] = FACTION_PLURAL[factionId];
+    return `~${count} ${count === 1 ? one : many}`;
+  });
+  return `${parts.join(" and ")} fall`;
+}
+
+/**
+ * Two lines that set an order beside its alternative from one typical outcome each. The
+ * forecast above already gives this order's results, so its line adds only the losses;
+ * the alternative names just the formations whose result would differ.
+ */
+export function orderComparisonLines(
+  before: GameState,
+  chosen: { label: string; outcome: GameState; note?: string },
+  alternative: { label: string; outcome: GameState; note?: string } | null,
+): string[] {
+  const join = (parts: readonly string[]): string => parts.filter(Boolean).join(" \u00b7 ");
+  const lines = [`${chosen.label}: ${join([typicalLossesText(before, chosen.outcome), chosen.note ?? ""])}`];
+  if (!alternative) return lines;
+  const chosenRows = new Set(combatForecast(before, [chosen.outcome]));
+  const changed = combatForecast(before, [alternative.outcome]).filter((row) => !chosenRows.has(row));
+  lines.push(`${alternative.label}: ${join([
+    changed.length > 0 ? changed.join("; ") : "same results",
+    typicalLossesText(before, alternative.outcome),
+    alternative.note ?? "",
+  ])}`);
+  return lines;
 }
 
 /**

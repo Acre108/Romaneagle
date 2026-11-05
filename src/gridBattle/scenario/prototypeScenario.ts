@@ -26,7 +26,7 @@ import type {
 import { hitPointsPerModel, isCavalry } from "../model/unitStats";
 import type { RangedWeaponId } from "../../units/RangedWeapons";
 
-interface FormationSpec {
+export interface FormationSpec {
   id: string;
   name: string;
   factionId: FactionId;
@@ -182,7 +182,7 @@ function unitProfile(spec: FormationSpec): UnitProfile {
   };
 }
 
-function addFormation(state: GameState, spec: FormationSpec): void {
+export function addFormation(state: GameState, spec: FormationSpec): void {
   const unit = unitProfile(spec);
   deployFormation(state, createFormation({
     id: spec.id,

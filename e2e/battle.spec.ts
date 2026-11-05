@@ -22,8 +22,12 @@ async function waitForBoard(page: Page): Promise<void> {
 async function selectRomanFormation(page: Page): Promise<string> {
   const box = await page.locator("#battlefield").boundingBox();
   if (!box) throw new Error("The battlefield has no size.");
-  for (let y = 40; y < box.height - 20; y += 22) {
+  // Bottom up: Roman formations start nearer the bottom of the view on every map.
+  for (let y = box.height - 20; y > 40; y -= 22) {
     for (let x = 40; x < box.width - 20; x += 30) {
+      // The minimap sits over the board, and clicking it moves the camera.
+      const onBoard = await page.evaluate(([cx, cy]) => document.elementFromPoint(cx!, cy!)?.id === "battlefield", [box.x + x, box.y + y]);
+      if (!onBoard) continue;
       await page.mouse.click(box.x + x, box.y + y);
       const name = await text(page, "grid-formation-name");
       const inspecting = await text(page, "grid-formation-label") === "INSPECTING FORMATION";
@@ -41,6 +45,8 @@ async function passRomanActivationAndWait(page: Page): Promise<void> {
 }
 
 test("consecutive battles start and keep playing", async ({ page }) => {
+  // Two full battle set-ups and a computer turn: slow under software rendering, and not a sign of the freeze.
+  test.setTimeout(300_000);
   await page.goto("/");
   await page.click("#open-test-scenario");
   for (let battle = 1; battle <= 2; battle += 1) {

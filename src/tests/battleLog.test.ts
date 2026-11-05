@@ -59,12 +59,51 @@ describe("the battle log", () => {
     expect(entries[0]?.headline).toBe("I Cohort · Prima and Great Warband became intermingled.");
   });
 
-  it("says when a formation only held, puts the newest first, and marks rounds", () => {
+  it("says when a formation only waited, puts the newest first, and marks rounds", () => {
     const entries = battleLogEntries([
-      event(1, "activation_ended", "I Cohort · Prima ended its activation.", { formationIds: ["R-I"] }),
+      event(1, "activation_ended", "I Cohort · Prima ended its activation.", { formationIds: ["R-I"], detail: { kind: "activation_ended", factionId: "roman" } }),
       event(2, "round_started", "Round 2 began. Romans have the first activation."),
     ], NAMES);
-    expect(entries.map((entry) => entry.headline)).toEqual(["Round 2 began.", "I Cohort · Prima held its ground."]);
+    expect(entries.map((entry) => entry.headline)).toEqual(["Round 2 began.", "Romans waited: I Cohort · Prima."]);
+  });
+
+  it("gathers a faction's waits in one round into one line, between the other side's orders", () => {
+    const names = new Map([...NAMES, ["R-II", "Lanciarii"], ["R-III", "Plumbatarii"]]);
+    const wait = (id: number, formationId: string) => event(id, "activation_ended", "ended.", {
+      formationIds: [formationId], detail: { kind: "activation_ended", factionId: "roman" },
+    });
+    const entries = battleLogEntries([
+      wait(1, "R-I"),
+      event(2, "formation_moved", "Great Warband moved.", { formationIds: ["great-warband"], detail: { kind: "step" } }),
+      event(3, "activation_ended", "ended.", { formationIds: ["great-warband"], detail: { kind: "activation_ended", factionId: "saxon" } }),
+      wait(4, "R-II"),
+      wait(5, "R-III"),
+      event(6, "round_started", "Round 2 began."),
+      wait(7, "R-I"),
+    ], names);
+    expect(entries.map((entry) => entry.headline)).toEqual([
+      "Romans waited: I Cohort · Prima.",
+      "Round 2 began.",
+      "Romans waited: I Cohort · Prima, Lanciarii, Plumbatarii.",
+      "Great Warband moved 1 square.",
+    ]);
+  });
+
+  it("names the faction with the label it is given", () => {
+    const [entry] = battleLogEntries([
+      event(1, "activation_ended", "ended.", { formationIds: ["great-warband"], detail: { kind: "activation_ended", factionId: "saxon" } }),
+    ], NAMES, undefined, (factionId) => (factionId === "saxon" ? "Picts" : "Romans"));
+    expect(entry?.headline).toBe("Picts waited: Great Warband.");
+  });
+
+  it("tells a Hold order, which recovers morale, apart from waiting", () => {
+    const state = blankState(8, 8);
+    const romans = addFormation(state, "R-I", [{ x: 3, y: 5 }], "north", "roman");
+    addFormation(state, "great-warband", [{ x: 3, y: 1 }], "south", "saxon");
+    romans.cohesion = 6;
+    executeCommand(state, { type: "select_cell", position: { x: 3, y: 5 } });
+    expect(executeCommand(state, { type: "hold" }).accepted).toBe(true);
+    expect(battleLogEntries(state.eventLog, NAMES)[0]?.headline).toBe("I Cohort · Prima held and recovered 1 morale.");
   });
 
   it("leads with the order, not a regroup or a rout that happened around it", () => {

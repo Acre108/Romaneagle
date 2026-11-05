@@ -1,6 +1,7 @@
 import type { GameCommand } from "../commands/executeCommand";
 import { commandLegality, executeCommand } from "../commands/executeCommand";
 import { planOrder } from "../commands/planOrder";
+import { simulationCopy } from "../model/simulationCopy";
 import { BALANCE } from "../model/config";
 import { blockFormation, positionKey } from "../model/occupancy";
 import type { Direction, FactionId, Formation, GameState, TroopBlock } from "../model/types";
@@ -76,13 +77,10 @@ function selectionStep(state: GameState, formation: Formation): AiCommandStep | 
   return executeCommand(state, command).accepted ? { command, confirmed: false } : null;
 }
 
+/** Tries the order on the planner's own copy. The computer needs no preview, and building one is slow. */
 function appendPlannedOrder(state: GameState, steps: AiCommandStep[], command: GameCommand): boolean {
-  const planned = planOrder(state, command);
-  if (!planned.ok || !planned.order) return false;
-  const confirmed = planned.order.confirmation !== null;
-  const result = executeCommand(state, planned.order.command, { confirmed });
-  if (!result.accepted) return false;
-  steps.push({ command: planned.order.command, confirmed });
+  if (!executeCommand(state, command, { confirmed: true }).accepted) return false;
+  steps.push({ command, confirmed: true });
   return true;
 }
 
@@ -124,7 +122,8 @@ function searchMovement(initialState: GameState, formationId: string): MovementN
       const formation = node.state.formations[formationId];
       if (!formation || node.engaged) continue;
       for (const direction of CARDINAL_DIRECTIONS) {
-        const simulated = structuredClone(node.state);
+        if (!planOrder(node.state, { type: "move", direction }).ok) continue;
+        const simulated = simulationCopy(node.state);
         if (!executeCommand(simulated, { type: "move", direction }, { confirmed: true }).accepted) continue;
         const movedFormation = simulated.formations[formationId];
         if (!movedFormation) continue;
@@ -319,7 +318,7 @@ function planPassActivation(state: GameState, formation: Formation, steps: AiCom
 }
 
 function planFormationActivation(original: GameState, formationId: string): FormationPlan | null {
-  const state = structuredClone(original);
+  const state = simulationCopy(original);
   const formation = state.formations[formationId];
   if (!formation) return null;
   const steps: AiCommandStep[] = [];
@@ -330,11 +329,11 @@ function planFormationActivation(original: GameState, formationId: string): Form
   if (formationIsEngaged(state, formation.id)) {
     return planEngagedActivation(state, formation, steps) ?? planPassActivation(state, formation, steps);
   }
-  const charge = planChargeActivation(structuredClone(state), structuredClone(formation), [...steps]);
+  const charge = planChargeActivation(simulationCopy(state), structuredClone(formation), [...steps]);
   if (charge) return charge;
-  const ranged = planRangedActivation(structuredClone(state), structuredClone(formation), [...steps]);
+  const ranged = planRangedActivation(simulationCopy(state), structuredClone(formation), [...steps]);
   if (ranged) return ranged;
-  return planAdvanceActivation(structuredClone(state), structuredClone(formation), [...steps])
+  return planAdvanceActivation(simulationCopy(state), structuredClone(formation), [...steps])
     ?? planStationaryActivation(state, formation, steps)
     ?? planPassActivation(state, formation, steps);
 }

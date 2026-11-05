@@ -538,11 +538,20 @@ export class GridBattleController {
     if (this.pendingOrder) {
       requiredElement("grid-order-confirm-title").textContent = this.pendingOrder.preview.title;
       requiredElement("grid-order-confirm-detail").textContent = this.pendingOrder.preview.detail;
-      requiredElement("grid-order-confirm-forecast").replaceChildren(...(this.pendingOrder.preview.forecast ?? []).map((line) => {
-        const item = document.createElement("li");
-        item.textContent = line;
-        return item;
-      }));
+      const preview = this.pendingOrder.preview;
+      requiredElement("grid-order-confirm-forecast").replaceChildren(
+        ...(preview.forecast ?? []).map((line) => {
+          const item = document.createElement("li");
+          item.textContent = line;
+          return item;
+        }),
+        ...(preview.comparison ?? []).map((line) => {
+          const item = document.createElement("li");
+          item.className = "grid-order-comparison";
+          item.textContent = line;
+          return item;
+        }),
+      );
     }
   }
 
@@ -553,7 +562,7 @@ export class GridBattleController {
     renderFormationPanel(this.state, this.inspectedFormation(), this.selectedFormation(), (factionId) => this.factionLabel(factionId));
     renderBlockPanel(this.state, this.inspectedBlock(), this.selectedBlock());
     this.renderActions();
-    renderLog(this.state, this.formationNames);
+    renderLog(this.state, this.formationNames, (factionId) => this.factionLabel(factionId));
     renderObjective(this.state, this.objectiveDefinition);
     renderOrderPreview(this.state, this.pendingOrder?.preview);
   }

@@ -10,7 +10,17 @@ export interface BoardView {
   hoveredCell(): GridPosition | null;
   /** Replaces block ids in a line of text with the names players know. */
   describe(text: string): string;
+  /** How much to enlarge a label drawn at this font size so it is at least this many pixels tall on screen. */
+  labelScale(fontSize: number, minimumShownPx: number): number;
 }
+
+/** Bubble text is 10px in the world; at the opening zoom it would be about 4px on screen. */
+const BUBBLE_FONT = 10;
+const BUBBLE_MINIMUM_SHOWN = 11;
+const MARKER_FONT = 25;
+const MARKER_MINIMUM_SHOWN = 14;
+const MATH_FONT = 12;
+const MATH_MINIMUM_SHOWN = 11;
 
 interface PreviewMathHitArea {
   key: string;
@@ -39,6 +49,7 @@ export class OrderPreviewOverlay {
   private preview: OrderConfirmationPreview | null = null;
   private expandedMathKey: string | null = null;
   private readonly hitAreas: PreviewMathHitArea[] = [];
+  private drawnScale = 1;
 
   constructor(private readonly layer: Container, private readonly view: BoardView) {}
 
@@ -82,6 +93,13 @@ export class OrderPreviewOverlay {
     this.redraw();
   }
 
+  /** Bubbles keep a readable size on screen, so they are laid out again when the zoom changes enough. */
+  handleZoomChanged(): void {
+    if (!this.preview) return;
+    const scale = this.view.labelScale(BUBBLE_FONT, BUBBLE_MINIMUM_SHOWN);
+    if (Math.abs(scale - this.drawnScale) / this.drawnScale > 0.04) this.redraw();
+  }
+
   private redraw(): void {
     this.layer.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.hitAreas.length = 0;
@@ -92,6 +110,9 @@ export class OrderPreviewOverlay {
     const preview = this.preview;
     if (!preview) return;
     const visibleTiles = preview.tiles.filter((tile) => tile.chance > 0);
+    const s = this.view.labelScale(BUBBLE_FONT, BUBBLE_MINIMUM_SHOWN);
+    const markerScale = this.view.labelScale(MARKER_FONT, MARKER_MINIMUM_SHOWN);
+    this.drawnScale = s;
     for (const tile of visibleTiles) {
       const centre = this.view.projectTile(tile.position);
       const colour = tile.factionId === "roman" ? 0x73b4ef : 0xe0aa65;
@@ -112,8 +133,9 @@ export class OrderPreviewOverlay {
           colour,
           58,
         );
-        marker.position.set(centre.x + (tile.factionId === "roman" ? -62 : 4), centre.y - 47);
-        this.hitAreas.push({ key, x: marker.x, y: marker.y, width: 58, height: 31 });
+        marker.scale.set(s);
+        marker.position.set(centre.x + (tile.factionId === "roman" ? -62 : 4) * s, centre.y - 16 - 31 * s);
+        this.hitAreas.push({ key, x: marker.x, y: marker.y, width: 58 * s, height: 31 * s });
         group.addChild(marker);
       } else {
         const marker = new Text({
@@ -127,6 +149,7 @@ export class OrderPreviewOverlay {
           },
         });
         marker.anchor.set(0.5);
+        marker.scale.set(markerScale);
         marker.position.set(centre.x, centre.y - 7);
         marker.eventMode = "none";
         group.addChild(marker);
@@ -151,6 +174,7 @@ export class OrderPreviewOverlay {
         78,
       );
       const direction = damage.factionId === "roman" ? -1 : 1;
+      // Offsets are in bubble units, so a bubble enlarged for readability is placed and spaced as one.
       const candidates = [
         { x: direction * 22, y: 0 },
         { x: direction * 66, y: -5 },
@@ -161,28 +185,24 @@ export class OrderPreviewOverlay {
         { x: direction * 154, y: -15 },
         { x: direction * 110, y: -55 },
       ];
-      let placement: PreviewBubblePlacement = {
-        x: centre.x - 39 + candidates[0]!.x,
-        y: centre.y - 105 + candidates[0]!.y,
-        width: 78,
-        height: 40,
-      };
+      const at = (candidate: { x: number; y: number }): PreviewBubblePlacement => ({
+        x: centre.x + (candidate.x - 39) * s,
+        y: centre.y - 65 + (candidate.y - 40) * s,
+        width: 78 * s,
+        height: 40 * s,
+      });
+      let placement = at(candidates[0]!);
       for (const candidate of candidates) {
-        const next = {
-          x: centre.x - 39 + candidate.x,
-          y: centre.y - 105 + candidate.y,
-          width: 78,
-          height: 40,
-        };
-        placement = next;
-        if (!damagePlacements.some((placed) => previewBubblesOverlap(next, placed))) break;
+        placement = at(candidate);
+        if (!damagePlacements.some((placed) => previewBubblesOverlap(placement, placed))) break;
       }
       while (damagePlacements.some((placed) => previewBubblesOverlap(placement, placed))) {
-        placement = { ...placement, x: placement.x + direction * 44, y: placement.y - 5 };
+        placement = { ...placement, x: placement.x + direction * 44 * s, y: placement.y - 5 * s };
       }
       damagePlacements.push(placement);
+      bubble.scale.set(s);
       bubble.position.set(placement.x, placement.y);
-      this.hitAreas.push({ key, x: bubble.x, y: bubble.y, width: 78, height: 40 });
+      this.hitAreas.push({ key, x: bubble.x, y: bubble.y, width: 78 * s, height: 40 * s });
       group.addChild(bubble);
       group.eventMode = "passive";
       this.layer.addChild(group);
@@ -195,13 +215,10 @@ export class OrderPreviewOverlay {
       const centre = this.view.projectTile(item.position);
       const colour = item.factionId === "roman" ? 0x73b4ef : 0xe0aa65;
       const detail = new Container({ label: "expandedPreviewMath" });
-      this.addPreviewMathBubble(
-        detail,
-        centre.x - 155,
-        centre.y + (expandedTile ? 34 : -178),
-        item.math.map((line) => this.view.describe(line)),
-        colour,
-      );
+      const mathScale = this.view.labelScale(MATH_FONT, MATH_MINIMUM_SHOWN);
+      this.addPreviewMathBubble(detail, 0, 0, item.math.map((line) => this.view.describe(line)), colour);
+      detail.scale.set(mathScale);
+      detail.position.set(centre.x - 155 * mathScale, expandedTile ? centre.y + 34 : centre.y - 178 * mathScale);
       detail.eventMode = "none";
       this.layer.addChild(detail);
     }

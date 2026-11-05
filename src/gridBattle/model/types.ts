@@ -85,6 +85,8 @@ export interface OrderConfirmationPreview {
   forecast?: string[];
   /** Contacts grouped by matching odds, so the numbers read at a glance. */
   contactSummary?: string[];
+  /** For Battle and Press: what this order and the other one are likely to do, side by side. */
+  comparison?: string[];
 }
 
 export interface TroopBlock {
@@ -228,15 +230,29 @@ export type GameEventType =
   | "trigger_failed";
 
 /** What an event means, for code that reacts to it. `message` is only ever shown to the player. */
+/** Why a formation lost morale, so previews can say so without reading the message. */
+export type MoraleReason =
+  | "pushed"
+  | "flanked"
+  | "rear"
+  | "outnumbered"
+  | "losses"
+  | "too_few"
+  | "neighbour_routed"
+  | "leader_lost";
+
 export type GameEventDetail =
   | { kind: "engaged_order"; order: "battle" | "press" }
+  | { kind: "morale"; lost: number; reasons: MoraleReason[] }
   | { kind: "step" }
   | { kind: "charge" }
   | { kind: "flight" }
   | { kind: "final_facing"; facing: Direction }
   | { kind: "turned"; facing: Direction }
   | { kind: "regrouped" }
-  | { kind: "leader_repositioned" };
+  | { kind: "leader_repositioned" }
+  /** `moraleRecovered` is set only by a Hold order, which is an order rather than a pass. */
+  | { kind: "activation_ended"; factionId: FactionId; moraleRecovered?: number };
 
 export interface GameEvent {
   id: number;

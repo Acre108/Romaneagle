@@ -380,7 +380,27 @@ describe("the order confirmation says what will happen", () => {
 
   it("lists the enemy first, with its morale change and result words", () => {
     const lines = confirmation(matchup(PRIMA, GREAT_WARBAND, "front"), "press");
-    expect(lines[0]).toMatch(/^defender: Morale 8 \u2192 6 \u00b7 .*Pushed \u00d73/);
+    expect(lines[0]).toMatch(/^defender: Morale 8 \u2192 6 \(\u22122 pushed\) \u00b7 .*Pushed \u00d73/);
+  });
+
+  it("says why a formation loses morale, even when it is winning", () => {
+    const state = matchup(PRIMA, GREAT_WARBAND, "side");
+    state.selectedFormationId = "attacker";
+    const lines = planOrder(state, { type: "battle" }).order?.confirmation?.forecast ?? [];
+    const defender = lines.find((line) => line.startsWith("defender:"));
+    expect(defender).toContain("\u22122 flanked");
+  });
+
+  it("sets Battle and Press side by side, from one typical result each", () => {
+    const state = matchup(PRIMA, GREAT_WARBAND, "front");
+    state.selectedFormationId = "attacker";
+    const battle = planOrder(state, { type: "battle" }).order?.confirmation?.comparison ?? [];
+    expect(battle).toHaveLength(2);
+    expect(battle[0]).toMatch(/^This Battle: ~\d+ Saxons? and ~\d+ Romans? fall$/);
+    expect(battle[1]).toMatch(/^Press instead: defender: Morale 8 \u2192 6 \(\u22122 pushed\) \u00b7 Pushed \u00d73.*fall \u00b7 advancing blocks stay wavering$/);
+    const press = planOrder(state, { type: "press" }).order?.confirmation?.comparison ?? [];
+    expect(press[0]).toMatch(/^This Press: ~\d+ Saxons? and ~\d+ Romans? fall \u00b7 advancing blocks stay wavering$/);
+    expect(press[1]).toMatch(/^Battle instead: /);
   });
 
   it("warns before an order routs a formation", () => {
@@ -406,6 +426,7 @@ describe("the order confirmation says what will happen", () => {
     state.selectedFormationId = "attacker";
     const before = JSON.stringify(state);
     planOrder(state, { type: "press" });
+    planOrder(state, { type: "battle" });
     expect(JSON.stringify(state)).toBe(before);
   });
 });

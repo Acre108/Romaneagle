@@ -98,12 +98,19 @@ function resolveRound(state: GameState): void {
   state.phase = "selecting";
 }
 
-export function endFormationActivation(state: GameState, formationId?: string): void {
+export function endFormationActivation(state: GameState, formationId?: string, heldMoraleRecovered?: number): void {
   const formation = formationId ? state.formations[formationId] : undefined;
   if (formation) {
     formation.hasActivated = true;
     formation.movementRemaining = 0;
-    emitEvent(state, "activation_ended", `${formation.name} ended its activation.`, { formationIds: [formation.id] });
+    emitEvent(state, "activation_ended", `${formation.name} ended its activation.`, {
+      formationIds: [formation.id],
+      detail: {
+        kind: "activation_ended",
+        factionId: formation.factionId,
+        ...(heldMoraleRecovered === undefined ? {} : { moraleRecovered: heldMoraleRecovered }),
+      },
+    });
     steadyFormationFamily(state, formation.id);
     resolveEndActivationRegrouping(state, formation.id);
   }
@@ -122,7 +129,8 @@ export function holdFormation(state: GameState, formationId: string): boolean {
   const formation = state.formations[formationId];
   if (!formation || formation.hasActivated
     || formationFamilyIsRouted(state, formationId)) return false;
+  const before = formation.cohesion;
   formation.cohesion = Math.min(formation.maxCohesion, formation.cohesion + 1);
-  endFormationActivation(state, formation.id);
+  endFormationActivation(state, formation.id, formation.cohesion - before);
   return true;
 }

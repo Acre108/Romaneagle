@@ -18,8 +18,8 @@ export const TEST_SCENARIO_MISSION: MissionDefinition = {
   objective: "Rout the Saxon test force",
   objectiveDetail: "Use the sandbox to compare formations, equipment, weapons, and specialist interactions.",
   facts: [
-    { label: "Terrain", value: "Open ground · Woods" },
-    { label: "Opposition", value: "3 Saxon formations" },
+    { label: "Terrain", value: "Open ground" },
+    { label: "Opposition", value: "5 Saxon formations" },
     { label: "Progress", value: "Campaign save unaffected" },
   ],
   scoutReport: "Choose a force, deploy, and repeat the engagement as often as needed.",

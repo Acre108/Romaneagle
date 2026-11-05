@@ -52,12 +52,17 @@ function setPreviewLines(lines: readonly string[]): void {
   }));
 }
 
-/** Shows what a pending order will do. Charge and Shoot keep their hover readout until then. */
+/**
+ * Shows the detail behind a pending order. The confirmation box already lists the forecast,
+ * so this panel holds the per-contact odds instead of repeating it. Charge and Shoot keep
+ * their hover readout until then, and Shoot keeps it while its volley awaits confirmation.
+ */
 export function renderOrderPreview(state: GameState, preview: OrderConfirmationPreview | undefined): void {
-  if (preview?.kind === "combat") {
-    setPreviewLines([...(preview.forecast ?? []), ...(preview.contactSummary ?? [])]);
+  if (preview?.kind === "combat" && (preview.contactSummary?.length ?? 0) > 0) {
+    setPreviewLines(preview.contactSummary!);
     return;
   }
+  if (preview?.kind === "combat" && state.currentAction === "shoot") return;
   if (state.currentAction === "charge" || state.currentAction === "shoot") return;
   setPreviewLines(["Choose Battle, Press, Charge, or Shoot to see what the order will do."]);
 }
@@ -130,24 +135,24 @@ export function renderFormationPanel(
   if (formation.isBraced) optional.push(["Stance", "Braced (+1 armour)"]);
   if (characters.length > 0) optional.push(["Characters", characters.join(", ")]);
   if (formation.provisionalFamilyId || formation.status === "fragment") optional.push(["Split", breakup]);
+  // Ordered by what decides a fight: where it faces, its morale, its shove, then its men.
+  // Damage stats only decide casualties, so they wait under More.
+  const facing = formation.facing.charAt(0).toUpperCase() + formation.facing.slice(1);
   stats.replaceChildren(...definitionRows([
     ["Faction", factionLabel(formation.factionId)],
+    ["Facing", `${facing} · ${formationIsEngaged(state, formation.id) ? "Engaged" : "Free"}`],
     ["Morale", `${formation.cohesion}/${formation.maxCohesion} · ${moraleWord(formation)}`],
+    ["Pressure / resistance", `${formationPressure(formation)} / ${formationResistance(formation)}`],
     ["Men", blocks.reduce((sum, block) => sum + block.models, 0)],
-    ["Blocks", blocks.length],
-    ["Wavering blocks", wavering],
-    ["Type", `${formation.unit.unitType.replaceAll("_", " ")} · ${formation.formationMode}`],
-    ["Attack / Armour", `${formation.unit.attack} / ${formation.unit.armour}`],
-    ["Base pressure / resistance", `${formationPressure(formation)} / ${formationResistance(formation)}`],
-    ["Facing", formation.facing],
+    ...(wavering > 0 ? [["Wavering", `${wavering} of ${blocks.length} blocks · easier to shove`] as [string, string]] : []),
     ["Movement left", formation.movementRemaining],
     ...optional,
   ]));
   requiredElement("grid-formation-more").replaceChildren(...definitionRows([
-    ["Engagement", formationIsEngaged(state, formation.id) ? "Engaged" : "Free"],
-    ["Model size", formation.unit.modelSize],
-    ["HP per model", formation.unit.hitPointsPerModel],
-    ["Defence", `${formation.unit.defence}%`],
+    ["Casualties", `Attack ${formation.unit.attack} · Armour ${formation.unit.armour} · Defence ${formation.unit.defence}%`],
+    ["Type", `${formation.unit.unitType.replaceAll("_", " ")} · ${formation.formationMode}`],
+    ["Blocks", blocks.length],
+    ["Model size / HP", `${formation.unit.modelSize} / ${formation.unit.hitPointsPerModel} per model`],
     ["Connectivity", connectedComponents(state, formation.id).length === 1 ? "Intact" : "Broken"],
   ]));
 }
@@ -170,21 +175,25 @@ export function renderBlockPanel(state: GameState, inspected: TroopBlock | undef
   if (character) optional.push(["Character", `${character.name} (${character.role})`]);
   if (block.isContested) optional.push(["Contested", "Intermingled with the enemy"]);
   stats.replaceChildren(...definitionRows([
-    ["Men", `${block.models}/${block.modelCapacity}`],
-    ["Hit points", formation ? blockHitPoints(formation, block) : 0],
-    ["State", blockIsWavering(state, block.id) ? "Wavering" : "Steady"],
+    ["State", blockIsWavering(state, block.id) ? "Wavering · easier to shove" : "Steady"],
     ["Pressure", attackingPressure(state, block.id)],
     ["Resistance", `${defendingResistance(state, block.id, facing)} front · ${defendingResistance(state, block.id, rotateDirection(facing, "left"))} side · ${defendingResistance(state, block.id, oppositeDirection(facing))} rear`],
     ["Rear support", rearSupport(state, block.id)],
+    ["Men", `${block.models}/${block.modelCapacity}`],
+    ["Hit points", formation ? blockHitPoints(formation, block) : 0],
     ["Equipment", formation?.unit.equipment.join(", ").replaceAll("_", " ") || "None"],
     ...optional,
   ]));
 }
 
-export function renderLog(state: GameState, formationNames: Map<string, string>): void {
+export function renderLog(
+  state: GameState,
+  formationNames: Map<string, string>,
+  factionLabel?: (factionId: FactionId) => string,
+): void {
   const log = requiredElement<HTMLOListElement>("grid-combat-log");
   rememberFormationNames(state, formationNames);
-  const rows = battleLogEntries(state.eventLog, formationNames).map((entry) => {
+  const rows = battleLogEntries(state.eventLog, formationNames, undefined, factionLabel).map((entry) => {
     const item = document.createElement("li");
     item.textContent = entry.headline;
     for (const note of entry.moraleNotes) {

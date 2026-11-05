@@ -38,6 +38,8 @@ import { canSelectFormation } from "../rules/turnSystem";
 import { blockFacing } from "../rules/blockFacing";
 import { rememberFormationNames, withFormationNames } from "../rules/displayNames";
 import { formationPlates } from "../rules/formationPlates";
+import { spreadPlates } from "./plateLayout";
+import { readableLabelScale } from "./labelScale";
 import { isCavalry } from "../model/unitStats";
 import { edgeFeatureDefinition } from "../model/edgeFeatureDefinitions";
 import { drawActionPreviews } from "./actionPreviews";
@@ -161,6 +163,9 @@ function diamondAt(centre: ScreenPosition, scale = 1): number[] {
   ];
 }
 
+const PLATE_FONT_SIZE = 18;
+const PLATE_MINIMUM_SHOWN_FONT = 12;
+
 function boardBounds(
   columns: number,
   rows: number,
@@ -229,6 +234,8 @@ export class BattlefieldRenderer {
   private readonly debugLayer = new Container({ label: "debugLayer" });
   private readonly pixiUiLayer = new Container({ label: "pixiUiLayer" });
   private readonly inputEvents = new AbortController();
+  private panelResizeObserver: ResizeObserver | null = null;
+  private readonly formationPlateGroups: { group: Container; x: number; y: number; width: number; height: number }[] = [];
   private readonly camera = new IsoCamera(
     { width: ISO_VIEW_WIDTH, height: ISO_VIEW_HEIGHT },
     boardBounds(1, 1),
@@ -241,6 +248,7 @@ export class BattlefieldRenderer {
     surfaceDiamond: (position, scale) => this.surfaceDiamond(position, scale),
     hoveredCell: () => this.hoveredCell,
     describe: (text) => withFormationNames(text, this.formationNames),
+    labelScale: (fontSize, minimumShownPx) => readableLabelScale(fontSize, minimumShownPx, this.shownPerWorldUnit()),
   };
   private readonly formationNames = new Map<string, string>();
   private readonly orderPreviewOverlay = new OrderPreviewOverlay(this.orderPreviewLayer, this.boardView);
@@ -365,6 +373,11 @@ export class BattlefieldRenderer {
 
   private bindInput(): void {
     const options = { signal: this.inputEvents.signal };
+    this.fitCanvasToPanel();
+    if (this.canvas.parentElement) {
+      this.panelResizeObserver = new ResizeObserver(this.fitCanvasToPanel);
+      this.panelResizeObserver.observe(this.canvas.parentElement);
+    }
     this.canvas.addEventListener("pointerdown", this.handlePointerDown, options);
     this.canvas.addEventListener("pointermove", this.handlePointerMove, options);
     this.canvas.addEventListener("pointerup", this.handlePointerUp, options);
@@ -374,7 +387,6 @@ export class BattlefieldRenderer {
     this.canvas.addEventListener("contextmenu", this.preventContextMenu, options);
     window.addEventListener("keydown", this.handleCameraKeyDown, options);
     window.addEventListener("keyup", this.handleCameraKeyUp, options);
-    window.addEventListener("resize", this.handleResize, options);
     this.minimap?.addEventListener("click", this.handleMinimapClick, options);
   }
 
@@ -549,9 +561,15 @@ export class BattlefieldRenderer {
     if (event.code === "Space") this.spaceHeld = false;
   };
 
-  private readonly handleResize = (): void => {
-    this.camera.setViewport({ width: this.app.screen.width, height: this.app.screen.height });
+  /** The canvas always fills its panel, so no part of the panel is wasted on black bars. */
+  private readonly fitCanvasToPanel = (): void => {
+    const panel = this.canvas.parentElement;
+    if (!panel || panel.clientWidth === 0 || panel.clientHeight === 0) return;
+    if (panel.clientWidth === this.app.screen.width && panel.clientHeight === this.app.screen.height) return;
+    this.app.renderer.resize(panel.clientWidth, panel.clientHeight);
+    this.camera.setViewport({ width: panel.clientWidth, height: panel.clientHeight });
     this.applyCamera();
+    this.app.render();
   };
 
   private readonly handleMinimapClick = (event: MouseEvent): void => {
@@ -567,10 +585,37 @@ export class BattlefieldRenderer {
 
   private readonly preventContextMenu = (event: MouseEvent): void => event.preventDefault();
 
+  /** Screen pixels per world unit: the camera zoom and any CSS scaling of the canvas. */
+  private shownPerWorldUnit(): number {
+    const shownWidth = this.app.canvas.getBoundingClientRect().width;
+    return this.camera.state.zoom * (shownWidth > 0 ? shownWidth / this.app.screen.width : 1);
+  }
+
+  /** Far out, a plate grows in the world so that its text stays readable on screen. */
+  private plateScale(): number {
+    return readableLabelScale(PLATE_FONT_SIZE, PLATE_MINIMUM_SHOWN_FONT, this.shownPerWorldUnit());
+  }
+
+  private layoutFormationPlates(): void {
+    const scale = this.plateScale();
+    const ys = spreadPlates(this.formationPlateGroups.map((plate) => ({
+      x: plate.x,
+      y: plate.y,
+      width: plate.width * scale,
+      height: plate.height * scale,
+    })));
+    this.formationPlateGroups.forEach((plate, index) => {
+      plate.group.scale.set(scale);
+      plate.group.position.set(plate.x, ys[index]!);
+    });
+  }
+
   private applyCamera(): void {
     const { x, y, zoom } = this.camera.state;
     this.worldContainer.position.set(x, y);
     this.worldContainer.scale.set(zoom);
+    this.layoutFormationPlates();
+    this.orderPreviewOverlay.handleZoomChanged();
     this.renderMinimap();
     this.updateDebugReadout();
   }
@@ -585,6 +630,19 @@ export class BattlefieldRenderer {
   frameBattlefield(): void {
     this.camera.frameBattlefield();
     this.applyCamera();
+  }
+
+  private frameArmies(): void {
+    const points = Object.values(this.state?.blocks ?? {}).map((block) => gridToIso(block.position, ISO_METRICS));
+    if (points.length === 0) return;
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    this.camera.frameOpening({
+      minX: Math.min(...xs) - ISO_METRICS.tileWidth,
+      minY: Math.min(...ys) - ISO_METRICS.tileHeight * 2,
+      maxX: Math.max(...xs) + ISO_METRICS.tileWidth,
+      maxY: Math.max(...ys) + ISO_METRICS.tileHeight,
+    });
   }
 
   setAnimationSpeed(speed: AnimationSpeed): void {
@@ -644,6 +702,7 @@ export class BattlefieldRenderer {
       this.blockLayer.removeChild(child);
       child.destroy({ children: true });
     }
+    this.formationPlateGroups.length = 0;
     this.blockVisuals.clear();
     this.characterVisuals.clear();
     this.motions.length = 0;
@@ -937,6 +996,7 @@ export class BattlefieldRenderer {
     const boundsChanged = fullRebuild || changes?.some((change) => change.boundsChanged) === true;
     if (boundsChanged) {
       this.camera.setBounds(boardBounds(map.width, map.height, mapElevationRange(map)), mapChanged);
+      if (mapChanged) this.frameArmies();
       this.applyCamera();
     }
     for (const key of dirtyKeys) {
@@ -1367,7 +1427,7 @@ export class BattlefieldRenderer {
       if (!block.formationId || !canSelectFormation(state, block.formationId)) continue;
       const pulse = new Graphics()
         .poly(this.surfaceDiamond(block.position, 0.93), true)
-        .fill({ color: 0xffd782, alpha: 0.07 })
+        .fill({ color: 0xffd782, alpha: 0.18 })
         .stroke({ width: 3, color: 0xffd782, alpha: 0.58 });
       pulse.zIndex = calculateIsoDepth(block.position.x, block.position.y, ISO_DEPTH_PRIORITY.soldier + 1);
       pulse.eventMode = "none";
@@ -1429,24 +1489,31 @@ export class BattlefieldRenderer {
   private renderFormationPlates(state: GameState, orderPreview: OrderConfirmationPreview | null): void {
     const involved = new Set((orderPreview?.damage ?? [])
       .map((damage) => baseFormationId(state.blocks[damage.blockId]?.formationId ?? null)));
+    this.formationPlateGroups.length = 0;
     for (const plate of formationPlates(state)) {
       if (involved.has(plate.key)) continue;
       const position = this.surfacePoint(plate.position, { x: 0, y: -BLOCK_PLATFORM_HEIGHT - 34 });
       const text = new Text({
-        text: plate.text,
-        style: { fontFamily: "Arial", fontSize: 18, fontWeight: "700", fill: PLATE_COLOURS[plate.tone] },
+        text: `${plate.arrow} ${plate.text}`,
+        style: { fontFamily: "Arial", fontSize: PLATE_FONT_SIZE, fontWeight: "700", fill: PLATE_COLOURS[plate.tone] },
       });
       text.anchor.set(0.5);
+      // The side to move sees which of its formations can still act; anything that has acted is dimmed.
+      const ready = plate.activation === "ready" && plate.factionId === state.activeFactionId && state.phase === "selecting";
       const background = new Graphics()
         .roundRect(-text.width / 2 - 5, -text.height / 2 - 2, text.width + 10, text.height + 4, 3)
         .fill({ color: plate.factionId === "roman" ? 0x4a1418 : 0x33260f, alpha: 0.9 });
+      if (ready) background.stroke({ width: 2.5, color: 0xffd782, alpha: 1 });
       const group = new Container({ label: `plate-${plate.key}` });
+      group.alpha = plate.activation === "spent" ? 0.5 : 1;
       group.position.set(position.x, position.y);
       group.eventMode = "none";
       group.zIndex = calculateIsoDepth(plate.position.x, plate.position.y, ISO_DEPTH_PRIORITY.floatingLabel);
       group.addChild(background, text);
+      this.formationPlateGroups.push({ group, x: position.x, y: position.y, width: text.width + 10, height: text.height + 4 });
       this.characterLayer.addChild(group);
     }
+    this.layoutFormationPlates();
   }
 
   private renderDebugCandidates(): void {
@@ -1542,6 +1609,7 @@ export class BattlefieldRenderer {
 
   destroy(): void {
     this.inputEvents.abort();
+    this.panelResizeObserver?.disconnect();
     this.app.ticker.remove(this.updateMotions, this);
     this.app.ticker.remove(this.updateActivationPulse, this);
     this.animationQueue?.destroy();

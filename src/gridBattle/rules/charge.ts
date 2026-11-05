@@ -1,3 +1,4 @@
+import { simulationCopy } from "../model/simulationCopy";
 import { BALANCE } from "../model/config";
 import { terrainAllowsCharge, terrainAt, terrainLimitsInfantryCharge } from "../model/terrain";
 import { enemyBlockAt, blockFormation } from "../model/occupancy";
@@ -122,7 +123,7 @@ export function chargeConfirmationPreview(
   const defender = state.blocks[defenderId];
   const formation = blockFormation(state, attacker);
   if (!preview || !attacker || !defender || !formation) return null;
-  const contactState = structuredClone(state);
+  const contactState = simulationCopy(state);
   const contactFormation = contactState.formations[formation.id]!;
   if (!translateChargingFormation(contactState, contactFormation.id, preview)) return null;
   const contacts = formationChargeContacts(contactState, contactFormation);
@@ -150,7 +151,7 @@ export function chargeConfirmationPreview(
     appendMath(contact.defenderId, [...impact, ...blockCombatMath(pressure, "defender")]);
   }
   const outcomes = Array.from({ length: 100 }, (_, defenceRoll) => {
-    const simulated = structuredClone(state);
+    const simulated = simulationCopy(state);
     resolveCharge(simulated, attackerId, defenderId, { defenceRollOverride: defenceRoll });
     return simulated;
   });

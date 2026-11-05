@@ -1,4 +1,4 @@
-import { MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from "./IsoConfig";
+import { MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM, READABLE_OPENING_ZOOM } from "./IsoConfig";
 import type { ScreenPosition } from "./IsoProjection";
 
 export interface IsoCameraState {
@@ -26,6 +26,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
 export class IsoCamera {
   private readonly current: IsoCameraState = { x: 0, y: 0, zoom: 1 };
   private readonly initial: IsoCameraState = { x: 0, y: 0, zoom: 1 };
+  private openingArmies: IsoWorldBounds | null = null;
 
   constructor(
     private viewport: IsoViewport,
@@ -72,26 +73,41 @@ export class IsoCamera {
     this.constrain();
   }
 
+  /** A camera the player has not touched reframes for the new size; otherwise the same spot stays centred. */
   setViewport(viewport: IsoViewport): void {
+    const untouched = this.current.x === this.initial.x && this.current.y === this.initial.y && this.current.zoom === this.initial.zoom;
+    const centre = this.screenToWorld({ x: this.viewport.width / 2, y: this.viewport.height / 2 });
     this.viewport = viewport;
-    this.constrain();
+    if (untouched) this.frameOpening(this.openingArmies);
+    else this.centerOn(centre);
   }
 
   setBounds(bounds: IsoWorldBounds, frame = false): void {
     this.bounds = bounds;
-    if (frame) this.frameBattlefield(true);
+    if (frame) this.frameOpening(null);
     else this.constrain();
   }
 
-  frameBattlefield(captureInitial = false): void {
-    const width = this.bounds.maxX - this.bounds.minX;
-    const height = this.bounds.maxY - this.bounds.minY;
+  frameBattlefield(captureInitial = false, area: IsoWorldBounds = this.bounds): void {
+    const width = area.maxX - area.minX;
+    const height = area.maxY - area.minY;
     const zoom = Math.min((this.viewport.width - 120) / width, (this.viewport.height - 100) / height);
     this.current.zoom = clamp(zoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM);
-    this.current.x = this.viewport.width / 2 - (this.bounds.minX + this.bounds.maxX) * 0.5 * this.current.zoom;
-    this.current.y = this.viewport.height / 2 - (this.bounds.minY + this.bounds.maxY) * 0.5 * this.current.zoom;
+    this.current.x = this.viewport.width / 2 - (area.minX + area.maxX) * 0.5 * this.current.zoom;
+    this.current.y = this.viewport.height / 2 - (area.minY + area.maxY) * 0.5 * this.current.zoom;
     this.constrain();
     if (captureInitial) Object.assign(this.initial, this.current);
+  }
+
+  /** Opens on the whole battlefield, or on the armies when the whole map would be too small to read. */
+  frameOpening(armies: IsoWorldBounds | null): void {
+    this.openingArmies = armies;
+    this.frameBattlefield(true, armies && !this.battlefieldReadableWhole() ? armies : this.bounds);
+  }
+
+  private battlefieldReadableWhole(): boolean {
+    return (this.bounds.maxX - this.bounds.minX) * READABLE_OPENING_ZOOM <= this.viewport.width - 120
+      && (this.bounds.maxY - this.bounds.minY) * READABLE_OPENING_ZOOM <= this.viewport.height - 100;
   }
 
   reset(): void {

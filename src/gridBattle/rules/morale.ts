@@ -1,6 +1,6 @@
 import { BALANCE } from "../model/config";
 import { friendlyBlockAt } from "../model/occupancy";
-import type { Formation, GameState } from "../model/types";
+import type { Formation, GameState, MoraleReason } from "../model/types";
 import { emitEvent } from "../events/events";
 import { orthogonalNeighbours } from "./direction";
 import { originalFormationId, provisionalFormationFamily, familyDisplayName } from "./splitting";
@@ -75,6 +75,7 @@ function shakeFormationsBeside(state: GameState, routed: readonly Formation[]): 
     emitEvent(state, "morale_shock", `${member.name} lost ${lost} morale as ${name} broke beside it.`, {
       blockIds: [...member.blockIds],
       formationIds: [member.id],
+      detail: { kind: "morale", lost, reasons: ["neighbour_routed"] },
     });
   }
 }
@@ -90,23 +91,31 @@ export function shockPushedFormation(state: GameState, formationId: string): voi
   emitEvent(state, "morale_shock", `${family[0]?.name ?? "The formation"} lost ${lost} morale: pushed back.`, {
     blockIds: family.flatMap((formation) => formation.blockIds),
     formationIds: family.map((formation) => formation.id),
+    detail: { kind: "morale", lost, reasons: ["pushed"] },
   });
+}
+
+/** What is left of a formation and its fragments, as a share of the men it started with. */
+export function familyRemainingRatio(state: GameState, family: readonly Formation[]): number {
+  const initialModels = Math.max(...family.map((formation) => formation.initialModelCount));
+  const currentModels = family.reduce((total, formation) => total + formationModels(state, formation), 0);
+  return initialModels > 0 ? currentModels / initialModels : 0;
 }
 
 export function applyCasualtyThresholds(state: GameState, formationId: string | null): void {
   if (!formationId || !state.formations[formationId]) return;
   const family = moraleFamily(state, formationId);
   if (family.length === 0) return;
-  const initialModels = Math.max(...family.map((formation) => formation.initialModelCount));
-  const currentModels = family.reduce((total, formation) => total + formationModels(state, formation), 0);
   const previousStage = Math.max(...family.map((formation) => formation.casualtyMoraleStage));
-  const remainingRatio = initialModels > 0 ? currentModels / initialModels : 0;
+  const remainingRatio = familyRemainingRatio(state, family);
   if (remainingRatio <= BALANCE.casualtyRoutRemainingRatio && !family.some((formation) => formation.status === "routed")) {
     const name = familyDisplayName(family[0]!.name);
-    applyMoraleLoss(state, formationId, Math.max(...family.map((formation) => formation.cohesion)));
-    emitEvent(state, "morale_shock", `${name} fell to ${Math.round(BALANCE.casualtyRoutRemainingRatio * 100)}% of its models and broke.`, {
+    const lost = Math.max(...family.map((formation) => formation.cohesion));
+    applyMoraleLoss(state, formationId, lost);
+    emitEvent(state, "morale_shock", `${name} fell to ${Math.round(BALANCE.casualtyRoutRemainingRatio * 100)}% of its models and broke. Too few remain to rally.`, {
       blockIds: family.flatMap((formation) => formation.blockIds),
       formationIds: family.map((formation) => formation.id),
+      detail: { kind: "morale", lost, reasons: ["too_few"] },
     });
     return;
   }
@@ -127,6 +136,7 @@ export function applyCasualtyThresholds(state: GameState, formationId: string | 
   emitEvent(state, "morale_shock", `${name} fell to ${Math.round(crossed.remainingRatio * 100)}% of its models and lost ${lost} morale.`, {
     blockIds: family.flatMap((formation) => formation.blockIds),
     formationIds: family.map((formation) => formation.id),
+    detail: { kind: "morale", lost, reasons: ["losses"] },
   });
 }
 
@@ -142,9 +152,11 @@ export function applyTacticalMoraleShock(
   if (family.length === 0) return;
   let moraleLoss = 0;
   const reasons: string[] = [];
+  const reasonKinds: MoraleReason[] = [];
   if (worstContactEdge !== "front" && family.every((candidate) => candidate.lastFlankShockRound !== state.round)) {
     moraleLoss += worstContactEdge === "rear" ? BALANCE.rearFlankMoraleLoss : BALANCE.sideFlankMoraleLoss;
     reasons.push(worstContactEdge === "rear" ? "attacked from the rear" : "flanked");
+    reasonKinds.push(worstContactEdge === "rear" ? "rear" : "flanked");
     for (const candidate of family) candidate.lastFlankShockRound = state.round;
   }
   const enemyFamilies = new Map<string, string>();
@@ -159,6 +171,7 @@ export function applyTacticalMoraleShock(
     && family.every((candidate) => candidate.lastOutnumberedShockRound !== state.round)) {
     moraleLoss += BALANCE.outnumberedMoraleLoss;
     reasons.push("outnumbered");
+    reasonKinds.push("outnumbered");
     for (const candidate of family) candidate.lastOutnumberedShockRound = state.round;
   }
   if (moraleLoss <= 0) return;
@@ -167,6 +180,7 @@ export function applyTacticalMoraleShock(
   emitEvent(state, "morale_shock", `${formation.name} lost ${lost} morale: ${reasons.join(" and ")}.`, {
     blockIds: family.flatMap((candidate) => candidate.blockIds),
     formationIds: family.map((candidate) => candidate.id),
+    detail: { kind: "morale", lost, reasons: reasonKinds },
   });
 }
 
@@ -177,5 +191,6 @@ export function applyLeaderLossShock(state: GameState, formationId: string | nul
   emitEvent(state, "morale_shock", `${family[0]?.name ?? "The formation"} lost ${BALANCE.leaderDeathMoraleLoss} morale when ${characterName} fell.`, {
     blockIds: family.flatMap((formation) => formation.blockIds),
     formationIds: family.map((formation) => formation.id),
+    detail: { kind: "morale", lost: BALANCE.leaderDeathMoraleLoss, reasons: ["leader_lost"] },
   });
 }

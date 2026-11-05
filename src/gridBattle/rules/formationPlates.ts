@@ -1,9 +1,11 @@
 import { BALANCE } from "../model/config";
-import type { FactionId, Formation, GameState, GridPosition } from "../model/types";
+import type { Direction, FactionId, Formation, GameState, GridPosition } from "../model/types";
 import { manhattanDistance } from "./direction";
 import { originalFormationId, familyDisplayName } from "./splitting";
 
 export type PlateTone = "steady" | "shaken" | "breaking";
+/** Ready: can still act this round. Spent: has acted. Routing formations run on their own. */
+export type PlateActivation = "ready" | "spent" | "routing";
 
 export interface FormationPlate {
   key: string;
@@ -11,7 +13,18 @@ export interface FormationPlate {
   tone: PlateTone;
   factionId: FactionId;
   position: GridPosition;
+  facing: Direction;
+  /** The facing as it looks on screen: north is drawn toward the upper right of the isometric board. */
+  arrow: string;
+  activation: PlateActivation;
 }
+
+export const FACING_ARROWS: Readonly<Record<Direction, string>> = {
+  north: "↗",
+  east: "↘",
+  south: "↙",
+  west: "↖",
+};
 
 const STEADY_MORALE_SHARE = 0.7;
 
@@ -62,6 +75,9 @@ export function formationPlates(state: GameState): FormationPlate[] {
       tone: moraleTone({ cohesion: morale, maxCohesion: members[0]!.maxCohesion, status: routed ? "routed" : "formed" }),
       factionId: members[0]!.factionId,
       position: { ...anchor.position },
+      facing: members[0]!.facing,
+      arrow: FACING_ARROWS[members[0]!.facing],
+      activation: routed ? "routing" : members.some((formation) => formation.hasActivated) ? "spent" : "ready",
     });
   }
   return plates.sort((a, b) => a.key.localeCompare(b.key));

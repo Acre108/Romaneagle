@@ -1,16 +1,26 @@
 {
-  "name": "roman-campaign-two",
+  "name": "roman-campaign-three",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --open",
     "build": "tsc -b && vite build",
+    "lint": "eslint src --max-warnings=0",
     "test": "vitest run",
+    "test:campaign": "vitest run src/tests/campaignCatalog.test.ts src/tests/campaignProgress.test.ts src/tests/campaignRules.test.ts",
+    "test:grid": "vitest run src/tests/gridBattleIsometric.test.ts src/tests/gridBattleRouting.test.ts src/tests/gridBattleRules.test.ts src/tests/soldierMarkLayout.test.ts",
     "typecheck": "tsc -b --pretty false"
   },
+  "dependencies": {
+    "pixi.js": "^8.19.0"
+  },
   "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@types/node": "^26.2.0",
+    "eslint": "^9.32.0",
     "typescript": "^5.9.2",
+    "typescript-eslint": "^8.38.0",
     "vite": "^7.1.3",
     "vitest": "^3.2.4"
   }

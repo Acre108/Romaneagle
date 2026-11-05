@@ -1,24 +1,11 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import { localMapStoragePlugin } from "./src/mapEditor/localMapServer";
 
 export default defineConfig({
-  plugins: [{
-    name: "sites-static-worker",
-    generateBundle() {
-      this.emitFile({
-        type: "asset",
-        fileName: "server/index.js",
-        source: `export default {
-  async fetch(request, env) {
-    const response = await env.ASSETS.fetch(request);
-    if (response.status !== 404) return response;
-    const url = new URL(request.url);
-    url.pathname = "/";
-    return env.ASSETS.fetch(new Request(url, request));
-  }
-};`,
-      });
-    },
-  }],
+  plugins: [
+    localMapStoragePlugin(fileURLToPath(new URL("./public/maps", import.meta.url))),
+  ],
   test: {
     environment: "node",
     include: ["src/tests/**/*.test.ts"],

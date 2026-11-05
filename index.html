@@ -5,14 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#171c17" />
     <meta name="description" content="Choose your commanders, study the mission, and lead the last Roman formations in Britain." />
-    <meta property="og:title" content="The Last Eagle — The Ford at Caer Durn" />
-    <meta property="og:description" content="A companion-led formation tactics campaign in Britain, AD 402." />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="/og.png" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="The Last Eagle — The Ford at Caer Durn" />
-    <meta name="twitter:description" content="Choose your commanders. Read the field. Hold the ford." />
-    <meta name="twitter:image" content="/og.png" />
     <title>The Last Eagle — War Council</title>
     <script>
       if (window.location.protocol === "file:") {
@@ -29,11 +21,224 @@
       </section>
     </div>
 
-    <section id="campaign-screen" class="campaign-screen" aria-label="Campaign war council">
+    <section id="campaign-select" class="campaign-select" aria-label="Choose a campaign">
+      <header class="campaign-select-header">
+        <span class="brand-mark" aria-hidden="true">IV</span>
+        <div><p class="campaign-kicker">THE LAST EAGLE</p><h1>Choose a campaign</h1></div>
+        <div class="campaign-utilities">
+          <button id="open-saved-maps" class="open-test-scenario open-saved-maps">
+            <span>LOAD MAP</span>
+            <small>Edit or battle on a project map</small>
+          </button>
+          <button id="open-map-editor" class="open-test-scenario open-map-editor">
+            <span>MAP EDITOR</span>
+            <small>Paint terrain and place objects</small>
+          </button>
+          <button id="open-test-scenario" class="open-test-scenario">
+            <span>TEST SCENARIO</span>
+            <small>Build a Roman force against Saxons</small>
+          </button>
+        </div>
+      </header>
+      <main id="campaign-grid" class="campaign-grid"></main>
+      <section id="saved-map-browser" class="saved-map-browser" role="dialog" aria-modal="true" aria-labelledby="saved-map-browser-title" hidden>
+        <div class="saved-map-browser-panel">
+          <header>
+            <div>
+              <p class="campaign-kicker">PROJECT MAPS · PUBLIC/MAPS</p>
+              <h2 id="saved-map-browser-title">Load a battlefield map</h2>
+            </div>
+            <button id="close-saved-maps" aria-label="Close saved map browser">×</button>
+          </header>
+          <p class="saved-map-browser-help">Choose a saved map to edit it or launch a custom battle. Invalid or incompatible map files are omitted.</p>
+          <div id="saved-map-list" class="saved-map-list"></div>
+          <p id="saved-map-browser-status" class="saved-map-browser-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+      <footer>Progress is saved automatically on this device.</footer>
+    </section>
+
+    <section id="map-editor-screen" class="map-editor-screen" aria-label="Battlefield map editor" hidden>
+      <header class="map-editor-header">
+        <button id="leave-map-editor" class="test-back-button" aria-label="Back to campaign selection">←</button>
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <div>
+          <p class="campaign-kicker">CARTOGRAPHER · FIELD WORKS</p>
+          <h1>Battlefield map editor</h1>
+        </div>
+        <div class="map-editor-header-help">Left-drag to paint · right-click to erase the selected layer</div>
+      </header>
+
+      <main class="map-editor-main">
+        <aside class="map-editor-sidebar map-editor-tools-panel">
+          <section>
+            <p class="campaign-kicker">MAP SIZE</p>
+            <form id="map-editor-size-form" class="map-editor-size-form">
+              <label>Width<input id="map-editor-width" type="number" min="4" max="64" step="1" value="16" /></label>
+              <span aria-hidden="true">×</span>
+              <label>Height<input id="map-editor-height" type="number" min="4" max="64" step="1" value="12" /></label>
+              <button type="submit">Create blank map</button>
+            </form>
+            <p class="map-editor-warning">Creating a blank map clears the current editor canvas.</p>
+          </section>
+          <section>
+            <p class="campaign-kicker">TERRAIN</p>
+            <div id="map-editor-terrain-tools" class="map-editor-palette"></div>
+            <div id="map-editor-ground-texture-menu" class="map-editor-ground-texture-menu" hidden>
+              <p id="map-editor-ground-texture-heading">GROUND TYPES</p>
+              <div id="map-editor-ground-texture-tools" class="map-editor-palette"></div>
+            </div>
+          </section>
+          <section>
+            <p class="campaign-kicker">ELEVATION</p>
+            <label class="map-editor-elevation-select">Painted level
+              <input id="map-editor-elevation-value" type="number" min="-4" max="10" step="1" value="0" />
+            </label>
+            <div id="map-editor-elevation-tools" class="map-editor-palette"></div>
+            <p class="map-editor-warning">Raise or lower tiles one level at a time, or paint the selected level directly.</p>
+          </section>
+          <section>
+            <p class="campaign-kicker">RAMPS</p>
+            <div id="map-editor-ramp-tools" class="map-editor-palette"></div>
+            <p class="map-editor-warning">Place a ramp on the lower tile, pointing toward an adjacent tile exactly one level higher.</p>
+          </section>
+          <section>
+            <p class="campaign-kicker">BUILDINGS</p>
+            <div class="map-editor-building-size">
+              <label>Width<input id="map-editor-building-width" type="number" min="1" max="12" step="1" value="2" /></label>
+              <span aria-hidden="true">×</span>
+              <label>Depth<input id="map-editor-building-depth" type="number" min="1" max="12" step="1" value="2" /></label>
+            </div>
+            <div id="map-editor-building-tools" class="map-editor-palette"></div>
+            <p class="map-editor-warning">Buildings occupy at least four level squares and cannot overlap other authored features.</p>
+          </section>
+          <section>
+            <p class="campaign-kicker">EDGE OBJECTS</p>
+            <div id="map-editor-edge-tools" class="map-editor-palette"></div>
+            <p class="map-editor-warning">Select a boundary, then click or drag near a tile side. Right-click removes the nearest edge.</p>
+          </section>
+          <section>
+            <p class="campaign-kicker">OBJECTS</p>
+            <div id="map-editor-object-tools" class="map-editor-palette"></div>
+          </section>
+          <section>
+            <p class="campaign-kicker">UNIT BLOCKS</p>
+            <div id="map-editor-unit-factions" class="map-editor-faction-tabs">
+              <button type="button" data-editor-faction="roman" class="selected" aria-pressed="true">Romans</button>
+              <button type="button" data-editor-faction="saxon" aria-pressed="false">Saxons</button>
+            </div>
+            <label class="map-editor-unit-select">Unit type<select id="map-editor-unit-archetype"></select></label>
+            <div id="map-editor-unit-tools" class="map-editor-palette"></div>
+            <p class="map-editor-warning">Paint individual blocks. Touching blocks of the same unit become one formation.</p>
+          </section>
+          <section>
+            <p class="campaign-kicker">CAMPAIGN SPAWNPOINTS</p>
+            <div id="map-editor-spawn-tools" class="map-editor-palette"></div>
+            <p class="map-editor-warning">Spawnpoints are saved for campaign logic and ignored in custom battles.</p>
+          </section>
+        </aside>
+
+        <section class="map-editor-workspace" aria-label="Editable map canvas">
+          <canvas id="map-editor-canvas" tabindex="0" aria-label="Top-down editable battlefield grid"></canvas>
+          <div class="map-editor-canvas-caption">
+            <span id="map-editor-status" role="status" aria-live="polite">Map editor ready.</span>
+            <span><b id="map-editor-selection">Clear ground</b> tool</span>
+          </div>
+        </section>
+
+        <aside class="map-editor-sidebar map-editor-summary-panel">
+          <section>
+            <p class="campaign-kicker">MAP DETAILS</p>
+            <label class="map-editor-name">Map name<input id="map-editor-name" type="text" value="new-britannia-battlefield" maxlength="64" /></label>
+            <dl class="map-editor-summary">
+              <div><dt>Dimensions</dt><dd id="map-editor-size-readout">16 × 12</dd></div>
+              <div><dt>Surface heights</dt><dd id="map-editor-elevation-readout">0 to 0</dd></div>
+              <div><dt>Ramps</dt><dd id="map-editor-ramp-readout">0</dd></div>
+              <div><dt>Buildings</dt><dd id="map-editor-building-readout">0</dd></div>
+              <div><dt>Edge objects</dt><dd id="map-editor-edge-readout">0</dd></div>
+              <div><dt>Terrain cells</dt><dd>Validated</dd></div>
+              <div><dt>Placed objects</dt><dd id="map-editor-object-readout">0</dd></div>
+              <div><dt>Unit blocks</dt><dd id="map-editor-unit-block-readout">0</dd></div>
+              <div><dt>Formations</dt><dd id="map-editor-formation-readout">0</dd></div>
+              <div><dt>Spawnpoints</dt><dd id="map-editor-spawn-readout">0</dd></div>
+              <div><dt>Format</dt><dd>Schema v2</dd></div>
+            </dl>
+          </section>
+          <section class="map-editor-guide">
+            <p class="campaign-kicker">CONTROLS</p>
+            <p><b>Paint</b> Select terrain, then click or drag across cells.</p>
+            <p><b>Shape</b> Paint or adjust elevation, then place ramps on lower approach tiles.</p>
+            <p><b>Build</b> Choose a rectangular footprint, then click its north-west origin tile.</p>
+            <p><b>Boundary</b> Select an edge object, then paint near the desired tile side.</p>
+            <p><b>Place</b> Select an object, then click cells. Objects can share a tile until its nine soldier spaces are full.</p>
+            <p><b>Remove</b> Choose a remove tool, or right-click to erase the currently selected layer.</p>
+            <p><b>Deploy</b> Paint unit blocks. Four-directionally connected blocks of the same unit are exported as one formation.</p>
+          </section>
+          <button id="map-editor-save-project" class="begin-battle map-editor-save-project">
+            <span>SAVE TO PROJECT</span>
+            <small>Write to public/maps</small>
+            <i aria-hidden="true">→</i>
+          </button>
+          <button id="map-editor-export" class="begin-battle map-editor-export">
+            <span>DOWNLOAD MAP JSON</span>
+            <small>Fallback for static builds</small>
+            <i aria-hidden="true">↓</i>
+          </button>
+          <p class="map-editor-omissions">Custom battles use authored deployments and eliminate-all victory. Campaign spawnpoints are stored for future campaign reinforcement rules.</p>
+        </aside>
+      </main>
+    </section>
+
+    <section id="test-scenario-screen" class="test-scenario-screen" aria-label="Test scenario deployment" hidden>
+      <header class="test-scenario-header">
+        <button id="leave-test-scenario" class="test-back-button" aria-label="Back to campaign selection">←</button>
+        <span class="brand-mark" aria-hidden="true">T</span>
+        <div>
+          <p class="campaign-kicker">SANDBOX · FIELD TRIALS</p>
+          <h1>Build a Roman test force</h1>
+        </div>
+        <div class="test-selection-count"><small>Selected</small><b><span id="test-unit-count">0</span>/8</b></div>
+      </header>
+      <main class="test-scenario-main">
+        <section class="test-roster-panel">
+          <div class="test-roster-heading">
+            <div>
+              <p class="campaign-kicker">ROMAN ARCHETYPE CATALOG</p>
+              <h2>Choose formations to deploy</h2>
+            </div>
+            <p>Select 1–8 units. Click a card to add or remove it from the field trial.</p>
+          </div>
+          <div id="test-unit-grid" class="test-unit-grid"></div>
+        </section>
+        <aside class="test-opposition-panel">
+          <p class="campaign-kicker">FIXED OPPOSITION</p>
+          <h2>Saxon test line</h2>
+          <p>Four infantry formations, skirmishers, archers, and a supporting battle standard.</p>
+          <div id="test-opposition-list" class="test-opposition-list"></div>
+          <dl>
+            <div><dt>Roman strength</dt><dd id="test-deployed-strength">0</dd></div>
+            <div><dt>Battlefield</dt><dd>Open ground</dd></div>
+            <div><dt>Campaign progress</dt><dd>Unaffected</dd></div>
+          </dl>
+          <button id="begin-test-scenario" class="begin-battle">
+            <span>DEPLOY TEST FORCE</span>
+            <small>Fight the Saxon line</small>
+            <i aria-hidden="true">→</i>
+          </button>
+          <p id="test-deployment-warning" class="deployment-warning" aria-live="polite"></p>
+        </aside>
+      </main>
+      <footer class="campaign-footer">
+        <span>FIELD TRIAL</span><span class="footer-line"></span><span>REPEATABLE SANDBOX</span>
+        <span class="autosave-note">No campaign rewards or losses</span>
+      </footer>
+    </section>
+
+    <section id="campaign-screen" class="campaign-screen" aria-label="Campaign war council" hidden>
       <header class="campaign-header">
         <a class="campaign-brand" href="#" aria-label="The Last Eagle campaign home">
           <span class="brand-mark" aria-hidden="true">IV</span>
-          <span><b>THE LAST EAGLE</b><small>A campaign of the old north</small></span>
+          <span><b>THE LAST EAGLE</b><small id="campaign-phase-title"></small></span>
         </a>
         <nav class="campaign-nav" aria-label="Campaign sections">
           <button class="active">War council</button>
@@ -41,8 +246,8 @@
           <button disabled>Chronicle</button>
         </nav>
         <div class="campaign-resources" aria-label="Campaign resources">
-          <span><small>Supplies</small><b>12 days</b></span>
-          <span><small>Renown</small><b>1,240</b></span>
+          <span><small>Campaign</small><b id="campaign-phase-number"></b></span>
+          <span><small>Mission</small><b id="mission-phase-number"></b></span>
           <button class="settings-button" aria-label="Settings">•••</button>
         </div>
       </header>
@@ -51,52 +256,38 @@
         <section class="mission-column">
           <div class="section-heading">
             <span>MISSION BRIEFING</span>
-            <b>III</b>
+            <b id="mission-roman"></b>
           </div>
-          <p class="campaign-kicker">ACT I · THE OLD ROAD</p>
-          <h1>The Ford at<br /><em>Caer Durn</em></h1>
-          <p class="mission-lede">
-            A Saxon warband has crossed the eastern ridge. Break them at the river before
-            the road to Eboracum lies open.
-          </p>
+          <nav id="mission-list" class="mission-list" aria-label="Campaign missions"></nav>
+          <p id="mission-kicker" class="campaign-kicker"></p>
+          <h1><span id="mission-title-lead"></span><br /><em id="mission-title-emphasis"></em></h1>
+          <p id="mission-lede" class="mission-lede"></p>
 
           <div class="mission-objective">
             <span class="objective-seal" aria-hidden="true">✦</span>
-            <div><small>PRIMARY OBJECTIVE</small><b>Rout the Saxon warband</b></div>
+            <div><small>PRIMARY OBJECTIVE</small><b id="mission-objective"></b></div>
           </div>
 
-          <dl class="mission-facts">
-            <div><dt>Terrain</dt><dd>Ford · Bridge · Woodland</dd></div>
-            <div><dt>Weather</dt><dd>Cold rain clearing</dd></div>
-            <div><dt>Enemy</dt><dd>6 formations · Wulfgar</dd></div>
-          </dl>
+          <dl id="mission-facts" class="mission-facts"></dl>
 
-          <blockquote id="scout-report">
-            “Their centre is heavy, but their right has outrun the baggage. The river will
-            divide them if we strike before noon.”
-            <cite>— Lucius, explorator</cite>
-          </blockquote>
+          <blockquote id="scout-report"><span id="scout-report-copy"></span><cite id="scout-report-attribution"></cite></blockquote>
 
-          <div class="mission-reward">
-            <small>REWARD</small>
-            <span><b>320</b> renown</span>
-            <span><b>+1</b> company resolve</span>
-          </div>
+          <div id="mission-reward" class="mission-reward"><small>REWARD</small></div>
         </section>
 
         <section class="map-column" aria-label="Mission map and companion conversation">
-          <div class="campaign-map" role="img" aria-label="Tactical map of the ford at Caer Durn">
+          <div id="campaign-map" class="campaign-map" role="img">
             <div class="map-grid"></div>
             <div class="map-hills hills-one"></div>
             <div class="map-hills hills-two"></div>
             <div class="map-road"></div>
             <div class="map-river"></div>
-            <span class="map-label label-ridge">EASTERN RIDGE</span>
-            <span class="map-label label-ford">OLD FORD</span>
-            <span class="map-label label-camp">ROMAN CAMP</span>
-            <div class="map-pin roman-pin"><i></i><span>Your company</span></div>
-            <div class="map-pin saxon-pin"><i></i><span>Wulfgar's host</span></div>
-            <div class="map-distance">2.4 MILES</div>
+            <span id="map-primary-label" class="map-label label-ridge"></span>
+            <span id="map-crossing-label" class="map-label label-ford"></span>
+            <span id="map-home-label" class="map-label label-camp"></span>
+            <div class="map-pin roman-pin"><i></i><span id="map-player-pin"></span></div>
+            <div class="map-pin saxon-pin"><i></i><span id="map-enemy-pin"></span></div>
+            <div id="map-distance" class="map-distance"></div>
             <div class="map-compass" aria-hidden="true"><b>N</b><i></i></div>
             <div class="map-controls" aria-hidden="true"><button>+</button><button>−</button></div>
           </div>
@@ -118,7 +309,7 @@
               </p>
               <div id="dialogue-choices" class="dialogue-choices">
                 <button data-reply="trust">“I trust your judgement.”</button>
-                <button data-reply="concern">“And if they turn the ford?”</button>
+                <button data-reply="concern">“And if they reach the gate?”</button>
               </div>
             </div>
           </section>
@@ -127,67 +318,19 @@
         <aside class="roster-column">
           <div class="section-heading">
             <span>CHOOSE FORMATIONS</span>
-            <b><strong id="formation-count">4</strong>/4</b>
+            <b><strong id="formation-count">0</strong>/<span id="formation-limit">0</span></b>
           </div>
-          <p class="roster-help">Your commanders ride with the formations you deploy.</p>
+          <p id="roster-help" class="roster-help"></p>
 
-          <div class="formation-list" id="formation-list">
-            <article class="formation-card selected" tabindex="0" role="checkbox" aria-checked="true"
-              data-unit-id="R-I" data-companion="flavia">
-              <div class="mini-portrait red" aria-hidden="true"><span>FM</span></div>
-              <div class="formation-copy">
-                <div><h3>I Cohort · Prima</h3><span class="readiness ready">READY</span></div>
-                <p>Flavia Marcellus <i>·</i> Heavy infantry</p>
-                <div class="formation-stats"><span>80 soldiers</span><span>Tortoise</span></div>
-              </div>
-              <span class="formation-check" aria-hidden="true">✓</span>
-              <button class="talk-button" data-talk="flavia">Speak</button>
-            </article>
-
-            <article class="formation-card selected" tabindex="0" role="checkbox" aria-checked="true"
-              data-unit-id="R-II" data-companion="cassian">
-              <div class="mini-portrait ochre" aria-hidden="true"><span>CC</span></div>
-              <div class="formation-copy">
-                <div><h3>II Cohort · Secunda</h3><span class="readiness ready">READY</span></div>
-                <p>Cassian Corvus <i>·</i> Heavy infantry</p>
-                <div class="formation-stats"><span>80 soldiers</span><span>Disciplined</span></div>
-              </div>
-              <span class="formation-check" aria-hidden="true">✓</span>
-              <button class="talk-button" data-talk="cassian">Speak</button>
-            </article>
-
-            <article class="formation-card selected" tabindex="0" role="checkbox" aria-checked="true"
-              data-unit-id="R-CAV" data-companion="brennos">
-              <div class="mini-portrait blue" aria-hidden="true"><span>BV</span></div>
-              <div class="formation-copy">
-                <div><h3>Equites Honoriani</h3><span class="readiness ready">READY</span></div>
-                <p>Brennos of Venta <i>·</i> Cavalry</p>
-                <div class="formation-stats"><span>50 riders</span><span>Flank charge</span></div>
-              </div>
-              <span class="formation-check" aria-hidden="true">✓</span>
-              <button class="talk-button" data-talk="brennos">Speak</button>
-            </article>
-
-            <article class="formation-card selected" tabindex="0" role="checkbox" aria-checked="true"
-              data-unit-id="R-ARCH" data-companion="aelia">
-              <div class="mini-portrait green" aria-hidden="true"><span>AN</span></div>
-              <div class="formation-copy">
-                <div><h3>Britannic Sagittarii</h3><span class="readiness ready">READY</span></div>
-                <p>Aelia Naso <i>·</i> Archers</p>
-                <div class="formation-stats"><span>60 archers</span><span>12 volleys</span></div>
-              </div>
-              <span class="formation-check" aria-hidden="true">✓</span>
-              <button class="talk-button" data-talk="aelia">Speak</button>
-            </article>
-          </div>
+          <div class="formation-list" id="formation-list"></div>
 
           <div class="deployment-summary">
-            <div><span>Deployed strength</span><b id="deployed-strength">270</b></div>
+            <div><span>Deployed strength</span><b id="deployed-strength">0</b></div>
             <div><span>Company morale</span><b class="high-morale">STEADFAST</b></div>
           </div>
           <button id="begin-battle" class="begin-battle">
             <span>BEGIN MISSION</span>
-            <small>March to Caer Durn</small>
+            <small></small>
             <i aria-hidden="true">→</i>
           </button>
           <p id="deployment-warning" class="deployment-warning" aria-live="polite"></p>
@@ -195,60 +338,136 @@
       </main>
 
       <footer class="campaign-footer">
-        <span>Mid Spring, 402 AD</span>
+        <span id="campaign-date"></span>
         <span class="footer-line"></span>
-        <span>Eboracum frontier · Britannia</span>
-        <span class="autosave-note">Campaign prototype · Choices reset on refresh</span>
+        <span id="campaign-region"></span>
+        <span class="autosave-note">Campaign progress saves automatically</span>
       </footer>
     </section>
 
     <section id="battle-screen" hidden>
-      <canvas id="battlefield" aria-label="Interactive formation tactics battlefield"></canvas>
-      <header class="topbar panel">
-        <div><strong>THE LAST EAGLE</strong><span class="date">Mid Spring, 402 AD</span></div>
-        <div class="speed">
-          <button id="pause-button" aria-label="Pause game">Ⅱ</button>
-          <button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="3">3×</button>
-          <button id="terrain-button" aria-label="Show terrain map" aria-pressed="false">Terrain</button>
-        </div>
-        <div class="forces">
-          <span class="roman-dot"></span> Rome <b id="roman-count">4</b>
-          <span class="saxon-dot"></span> Saxons <b id="saxon-count">6</b>
-        </div>
-      </header>
-      <aside id="selection-panel" class="selection-panel panel">
-        <div class="eyebrow">SELECTED FORMATION</div>
-        <h2 id="unit-name">No unit selected</h2>
-        <div id="unit-type" class="unit-type">Drag or click to select Romans</div>
-        <dl>
-          <div><dt>Strength</dt><dd id="unit-strength">—</dd></div>
-          <div><dt>Ammo</dt><dd id="unit-ammo">—</dd></div>
-          <div><dt>Morale</dt><dd><span id="unit-morale">—</span><i><em id="morale-bar"></em></i></dd></div>
-          <div><dt>Cohesion</dt><dd><span id="unit-cohesion">—</span><i><em id="cohesion-bar"></em></i></dd></div>
-          <div><dt>Stamina</dt><dd id="unit-stamina">—</dd></div>
-          <div><dt>Formation</dt><dd id="unit-formation">—</dd></div>
-          <div><dt>Terrain</dt><dd id="unit-terrain">—</dd></div>
-          <div><dt>Order</dt><dd id="unit-order">—</dd></div>
-        </dl>
-      </aside>
-      <aside class="objective-panel panel">
-        <div class="eyebrow">BATTLE OBJECTIVE</div><h3>Rout the Saxon warband</h3>
-        <p>Break their formations before the Roman line collapses.</p>
-        <div><span>Romans escaped</span><b id="roman-routed">0</b></div>
-        <div><span>Saxons escaped</span><b id="saxon-routed">0</b></div>
-        <div><span>Romans destroyed</span><b id="roman-destroyed">0</b></div>
-        <div><span>Saxons destroyed</span><b id="saxon-destroyed">0</b></div>
-      </aside>
+      <div class="grid-battle-shell">
+        <header class="grid-topbar panel">
+          <div class="grid-brand"><strong>THE LAST EAGLE</strong><span id="battle-date" class="date"></span></div>
+          <dl>
+            <div><dt>Round</dt><dd id="grid-round">1</dd></div>
+            <div><dt>Active</dt><dd id="grid-active-faction">Romans</dd></div>
+            <div><dt>Unactivated</dt><dd id="grid-remaining">3</dd></div>
+          </dl>
+          <div class="grid-top-actions">
+            <label>Animation
+              <select id="grid-animation-speed" aria-label="Animation speed">
+                <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="0">Instant</option>
+              </select>
+            </label>
+            <button id="grid-morale-toggle" aria-pressed="false" title="Colour-code blocks by morale">Morale view</button>
+            <button id="grid-debug-toggle" aria-pressed="false">Debug (D)</button>
+            <button id="grid-reset">Reset</button>
+            <button id="grid-conclude">Conclude battle</button>
+          </div>
+        </header>
+
+        <main class="grid-battle-main">
+          <aside class="grid-left-rail">
+            <section class="grid-info-panel panel">
+              <div class="eyebrow">SELECTED FORMATION</div>
+              <h2 id="grid-formation-name">No formation selected</h2>
+              <dl id="grid-formation-stats"></dl>
+            </section>
+            <section class="grid-info-panel panel">
+              <div class="eyebrow">SELECTED BLOCK</div>
+              <h3 id="grid-block-name">Click a selected formation block again</h3>
+              <dl id="grid-block-stats"></dl>
+            </section>
+            <section class="grid-objective panel">
+              <div class="eyebrow">BATTLE OBJECTIVE</div><h3 id="battle-objective"></h3>
+              <p id="battle-objective-detail"></p>
+              <div id="grid-objective-status" class="grid-objective-status" role="status"></div>
+              <ul id="grid-objective-progress" class="grid-objective-progress"></ul>
+            </section>
+          </aside>
+
+          <div class="grid-board-wrap">
+            <canvas id="battlefield" aria-label="Turn-based grid formation tactics battlefield"></canvas>
+            <div id="grid-morale-key" class="grid-morale-key" hidden aria-label="Morale colour key">
+              <span><i class="steady"></i>Steady</span><span><i class="shaken"></i>Shaken</span><span><i class="wavering"></i>Wavering</span>
+            </div>
+            <div id="grid-hover-info" class="grid-hover-info">Hover a square to inspect it</div>
+            <canvas id="grid-minimap" class="grid-minimap" width="160" height="112" aria-label="Top-down battlefield minimap"></canvas>
+          </div>
+
+          <aside class="grid-right-rail">
+            <section class="grid-action-panel panel">
+              <div class="eyebrow">FORMATION ACTIONS</div>
+              <div id="grid-actions" class="grid-actions">
+                <button data-grid-action="move" data-action-mode="normal" title="Translate one cardinal grid step (M)">Move <kbd>M</kbd></button>
+                <button data-grid-action="attack" data-action-mode="normal" title="Apply local pressure through a front edge (A)">Attack <kbd>A</kbd></button>
+                <button data-grid-action="shoot" data-action-mode="normal" title="Loose one coordinated ranged volley (S)">Shoot <kbd>S</kbd></button>
+                <button data-grid-action="charge" data-action-mode="normal" title="Charge an enemy directly ahead (C)">Charge <kbd>C</kbd></button>
+                <button data-grid-action="reform" data-action-mode="normal" title="Move the selected block to a legal adjacent square (R)">Reform <kbd>R</kbd></button>
+                <button data-grid-action="merge" data-action-mode="normal" title="Merge with a connected compatible fragment (G)">Merge <kbd>G</kbd></button>
+                <button data-grid-action="brace" data-action-mode="normal" title="Lock close-order infantry in place for +1 armour until it moves (X)">Brace <kbd>X</kbd></button>
+                <button data-grid-action="hold" data-action-mode="normal" title="Recover one morale and end activation (H)">Hold <kbd>H</kbd></button>
+                <button data-grid-action="fall_back" data-action-mode="engaged" title="Reverse the formation one square and disengage (V)">Fall back <kbd>V</kbd></button>
+                <button data-grid-action="battle" data-action-mode="engaged" title="Fight and advance steady blocks toward contact (B)">Battle <kbd>B</kbd></button>
+                <button data-grid-action="press" data-action-mode="engaged" title="Fight with extra pressure and occupy vacated gaps (P)">Press <kbd>P</kbd></button>
+                <button data-grid-action="end" data-action-mode="both" title="End this formation activation (Space)">End activation <kbd>Space</kbd></button>
+              </div>
+              <div id="grid-move-facing" class="grid-move-facing" hidden>
+                <span>Finish move facing</span>
+                <div>
+                  <button data-grid-facing="north" title="Finish facing north">↑ N</button>
+                  <button data-grid-facing="west" title="Finish facing west">← W</button>
+                  <button data-grid-facing="south" title="Finish facing south">↓ S</button>
+                  <button data-grid-facing="east" title="Finish facing east">→ E</button>
+                </div>
+              </div>
+              <div id="grid-order-confirm" class="grid-order-confirm" hidden>
+                <strong id="grid-order-confirm-title">Confirm order</strong>
+                <p id="grid-order-confirm-detail"></p>
+                <div>
+                  <button id="grid-order-confirm-accept">Confirm <kbd>Enter</kbd></button>
+                  <button id="grid-order-confirm-cancel">Cancel <kbd>Esc</kbd></button>
+                </div>
+              </div>
+              <p id="grid-action-help">Select a formation belonging to the active faction.</p>
+            </section>
+            <section class="grid-preview-panel panel">
+              <div class="eyebrow">COMBAT PREVIEW</div>
+              <div id="grid-combat-preview">Choose Attack, then hover or click a highlighted enemy block.</div>
+            </section>
+            <section class="grid-log-panel panel">
+              <div class="eyebrow">COMBAT LOG</div>
+              <ol id="grid-combat-log" aria-live="polite"></ol>
+            </section>
+            <section id="grid-debug-panel" class="grid-debug-panel panel" hidden>
+              <div class="eyebrow">DEBUG TOOLS</div>
+              <div>
+                <button data-grid-debug="damage">Damage block</button><button data-grid-debug="retreat">Force retreat</button><button data-grid-debug="route">Force rout</button>
+                <button data-grid-debug="split">Force split</button><button data-grid-debug="contested">Create contested</button>
+                <button data-grid-debug="resolve">Resolve melees</button><button data-grid-debug="restore">Restore morale</button>
+                <button id="grid-axes-toggle" aria-pressed="false">Grid axes</button><button id="grid-frame-camera">Frame board (F)</button>
+              </div>
+              <pre id="grid-iso-debug-readout" class="grid-iso-debug-readout"></pre>
+            </section>
+          </aside>
+        </main>
+
+        <footer class="grid-command-help panel">
+          Click block: formation · wheel zoom · middle-drag / Space+drag pan · F frame · Home camera reset · M move · choose facing to finish · A attack · S shoot · C charge · R reform · G merge · X brace · H hold · Space tap end · D debug
+        </footer>
+      </div>
       <section id="battle-result" class="battle-result panel" hidden>
         <div class="eyebrow">BATTLE ENDED</div><h2 id="battle-result-title"></h2><p id="battle-result-detail"></p>
+        <button id="return-from-battle" class="story-button" hidden><span>RETURN TO CAMPAIGN</span><small>Back to the campaign phase</small><i>→</i></button>
       </section>
       <section id="victory-debrief" class="victory-debrief panel" hidden aria-label="Victory debrief">
         <div class="victory-header">
           <span class="victory-laurel" aria-hidden="true">✦</span>
           <div>
             <p class="campaign-kicker">MISSION COMPLETE</p>
-            <h2>Victory at Caer Durn</h2>
-            <p>The ford is held. Before the company marches, the roll is called.</p>
+            <h2 id="debrief-title"></h2>
+            <p id="debrief-detail"></p>
           </div>
           <div class="victory-total">
             <small>COMPANY EXPERIENCE</small>
@@ -260,7 +479,7 @@
         </div>
         <div id="formation-results" class="formation-results"></div>
         <footer class="debrief-footer">
-          <p><span>✦</span> Surviving commanders are ready to report.</p>
+          <p><span>✦</span> <span id="debrief-footer-copy"></span></p>
           <button id="continue-story" class="story-button">
             <span>CONTINUE</span><small>After the battle</small><i>→</i>
           </button>
@@ -270,11 +489,11 @@
       <section id="post-battle-cutscene" class="post-battle-cutscene" hidden aria-label="After-battle conversation">
         <div class="cutscene-backdrop" aria-hidden="true"></div>
         <div class="cutscene-chapter">
-          <small>AFTER THE BATTLE</small>
+          <small id="cutscene-chapter-label"></small>
           <span></span>
-          <b>CAER DURN · DUSK</b>
+          <b id="cutscene-location-label"></b>
         </div>
-        <div id="cutscene-portrait" class="cutscene-portrait portrait-flavia" aria-hidden="true"></div>
+        <div id="cutscene-portrait" class="cutscene-portrait portrait-red" data-initials="FM" aria-hidden="true"></div>
         <div class="cutscene-dialogue">
           <div class="cutscene-speaker">
             <p id="cutscene-speaker-name">Flavia Marcellus</p>
@@ -287,31 +506,6 @@
           </footer>
         </div>
       </section>
-      <nav class="commandbar panel" aria-label="Formation commands">
-        <button data-command="move"><kbd>RMB</kbd><span>Move</span></button>
-        <button data-command="hold"><kbd>H</kbd><span>Hold</span></button>
-        <button data-command="line"><kbd>L</kbd><span>Line</span></button>
-        <button data-command="column"><kbd>C</kbd><span>Column</span></button>
-        <button data-command="ability" aria-label="G unique ability"><kbd>G</kbd><span id="ability-command-label">Unique ability</span></button>
-        <button data-command="mob"><kbd>B</kbd><span>Mob</span></button>
-        <button data-command="about-face"><kbd>F</kbd><span>About face</span></button>
-        <button data-command="rally"><kbd>R</kbd><span>Rally</span></button>
-      </nav>
-      <div id="debug" class="debug panel" hidden>
-        <b>Prototype 0.3 · Campaign</b><span id="debug-fps"></span><span id="debug-soldiers"></span>
-        <span id="debug-culled"></span><span id="debug-terrain"></span><span id="debug-bodies"></span>
-        <span id="debug-equipment"></span><span id="debug-escape-visuals"></span><span id="debug-render"></span>
-        <span id="debug-camera"></span><span id="debug-mouse"></span><span id="debug-units"></span>
-        <span id="debug-speed"></span><span id="debug-selected"></span>
-      </div>
-      <aside id="terrain-legend" class="terrain-legend panel" hidden>
-        <div class="eyebrow">GAMEPLAY TERRAIN</div>
-        <span><i class="terrain-open"></i>Open ground</span><span><i class="terrain-road"></i>Road</span>
-        <span><i class="terrain-rough"></i>Rough ground</span><span><i class="terrain-woods"></i>Woods</span>
-        <span><i class="terrain-shallow"></i>Shallow water</span><span><i class="terrain-deep"></i>Deep water · impassable</span>
-        <small>A formation is affected above 20% coverage.</small>
-      </aside>
-      <div class="help">WASD pan · Wheel zoom · RMB move/attack · F about face · T terrain · F3 debug</div>
     </section>
 
     <script type="module" src="/src/main.ts"></script>

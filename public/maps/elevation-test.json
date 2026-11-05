@@ -1,0 +1,906 @@
+{
+  "schemaVersion": 2,
+  "width": 16,
+  "height": 12,
+  "tiles": [
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "objects": [
+        "tree_small"
+      ]
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "objects": [
+        "tree_small"
+      ]
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small",
+        "tree_large"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small",
+        "tree_large"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small",
+        "tree_small",
+        "tree_large"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small",
+        "tree_small"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small",
+        "tree_small",
+        "tree_large"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small",
+        "tree_small",
+        "tree_large"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small",
+        "tree_large"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small"
+      ]
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small",
+        "tree_small"
+      ]
+    },
+    {
+      "terrain": "forest",
+      "elevation": 0,
+      "objects": [
+        "tree_small"
+      ]
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "ramp": "east"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 2,
+      "ramp": "east"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 3
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -2
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "ramp": "east"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 1,
+      "ramp": "north"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 2
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "road",
+      "elevation": 0
+    },
+    {
+      "terrain": "road",
+      "elevation": 0
+    },
+    {
+      "terrain": "road",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "ramp": "east"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "ramp": "west"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "road",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "ramp": "north"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "ramp": "north"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0,
+      "ramp": "north"
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "road",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "road",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "road",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "road",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "river_deep",
+      "elevation": -1
+    },
+    {
+      "terrain": "clear",
+      "elevation": 0
+    }
+  ],
+  "buildings": [],
+  "edgeFeatures": [],
+  "triggers": [],
+  "deployments": [
+    {
+      "id": "custom-roman-1",
+      "name": "Auxiliary Cohort Detachment",
+      "factionId": "roman",
+      "archetypeId": "roman-auxiliary-cohort-detachment",
+      "facing": "north",
+      "positions": [
+        {
+          "x": 4,
+          "y": 9
+        },
+        {
+          "x": 5,
+          "y": 9
+        },
+        {
+          "x": 6,
+          "y": 9
+        },
+        {
+          "x": 4,
+          "y": 10
+        },
+        {
+          "x": 5,
+          "y": 10
+        },
+        {
+          "x": 6,
+          "y": 10
+        }
+      ]
+    },
+    {
+      "id": "custom-saxon-1",
+      "name": "Saxon archers",
+      "factionId": "saxon",
+      "archetypeId": "saxon-archers",
+      "facing": "south",
+      "positions": [
+        {
+          "x": 9,
+          "y": 1
+        },
+        {
+          "x": 10,
+          "y": 1
+        },
+        {
+          "x": 11,
+          "y": 1
+        },
+        {
+          "x": 9,
+          "y": 2
+        },
+        {
+          "x": 10,
+          "y": 2
+        },
+        {
+          "x": 11,
+          "y": 2
+        }
+      ]
+    }
+  ],
+  "spawnPoints": []
+}

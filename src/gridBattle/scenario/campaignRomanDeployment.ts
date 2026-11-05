@@ -1,0 +1,222 @@
+import { ROMAN_FORMATION_BY_ID, type RomanFormationDefinition } from "../../scenario/Roster";
+import { getUnitArchetype, type UnitArchetypeProfile } from "../../units/UnitArchetypes";
+import { getRangedWeaponProfile } from "../../units/RangedWeapons";
+import { BALANCE } from "../model/config";
+import type {
+  Character,
+  EquipmentAbility,
+  Formation,
+  FormationMode,
+  GameState,
+  GridPosition,
+  UnitProfile,
+  UnitType,
+} from "../model/types";
+import { modelCapacity } from "../model/unitStats";
+
+interface DeploymentLayout {
+  infantry: readonly (readonly GridPosition[])[];
+  cavalry: readonly (readonly GridPosition[])[];
+  archers: readonly (readonly GridPosition[])[];
+  wallArchers?: readonly GridPosition[];
+}
+
+function rectangle(x: number, y: number, width: number, depth: number): GridPosition[] {
+  return Array.from({ length: width * depth }, (_, index) => ({
+    x: x + index % width,
+    y: y + Math.floor(index / width),
+  }));
+}
+
+function line(x: number, y: number, length: number): GridPosition[] {
+  return Array.from({ length }, (_, index) => ({ x: x + index, y }));
+}
+
+const DEPLOYMENT_LAYOUTS: Readonly<Record<string, DeploymentLayout>> = {
+  "roman-1-hadrians-wall": {
+    infantry: [rectangle(5, 7, 3, 3), rectangle(12, 7, 3, 3)],
+    cavalry: [line(13, 10, 7)],
+    archers: [],
+    wallArchers: line(2, 11, 5),
+  },
+  "roman-2-blackwater-ford": {
+    infantry: [rectangle(1, 9, 3, 3), rectangle(5, 9, 3, 3)],
+    cavalry: [line(13, 12, 7)],
+    archers: [line(0, 13, 11)],
+  },
+  "roman-3-raven-at-vindolanda": {
+    infantry: [
+      rectangle(0, 9, 3, 3),
+      rectangle(4, 9, 3, 3),
+      rectangle(8, 9, 3, 3),
+      rectangle(12, 9, 3, 3),
+    ],
+    cavalry: [line(13, 12, 7)],
+    archers: [line(0, 13, 11)],
+  },
+};
+
+function gridUnitType(archetype: UnitArchetypeProfile): UnitType {
+  if (archetype.type === "archers" || archetype.type === "skirmishers") return "light_infantry";
+  if (archetype.type === "cavalry") {
+    return archetype.unitClass === "heavy cavalry" ? "heavy_cavalry" : "light_cavalry";
+  }
+  if (archetype.type === "infantry") {
+    return archetype.unitClass === "heavy infantry" ? "heavy_infantry" : "medium_infantry";
+  }
+  throw new Error(`Campaign unit ${archetype.id} cannot deploy in the grid battle.`);
+}
+
+function unitProfile(archetype: UnitArchetypeProfile): UnitProfile {
+  const unitType = gridUnitType(archetype);
+  const equipment: EquipmentAbility[] = [];
+  if (archetype.equipmentVisual.shield !== "none") equipment.push("shield_front");
+  const rangedWeaponId = archetype.rangedWeapon?.id;
+  return {
+    unitType,
+    modelSize: unitType === "light_cavalry" || unitType === "heavy_cavalry" ? 3 : 2,
+    attack: unitType === "light_infantry" ? 2 : 3,
+    armour: archetype.gameplay.armour.class === "heavy" ? 1 : 0,
+    defence: 0,
+    hitPointsPerModel: 1,
+    movement: BALANCE.movement[unitType],
+    equipment,
+    ...(rangedWeaponId ? { rangedWeaponId } : {}),
+  };
+}
+
+function removeRomanDeployments(state: GameState): void {
+  for (const formation of Object.values(state.formations)) {
+    if (formation.factionId !== "roman") continue;
+    for (const blockId of formation.blockIds) delete state.blocks[blockId];
+    delete state.formations[formation.id];
+  }
+  for (const character of Object.values(state.characters)) {
+    if (character.factionId === "roman") delete state.characters[character.id];
+  }
+}
+
+function addCharacter(state: GameState, definition: RomanFormationDefinition, formation: Formation): void {
+  const hostBlockId = formation.blockIds[Math.floor(formation.blockIds.length / 2)]!;
+  const character: Character = {
+    id: definition.companion.id,
+    factionId: "roman",
+    name: definition.companion.name,
+    role: "commander",
+    hostBlockId,
+    pressureBonus: 1,
+    resistanceBonus: 1,
+    meleeBonus: 0,
+    commandRadius: 2,
+    prowess: 3,
+    wounds: 0,
+    maxWounds: 3,
+    status: "active",
+    tiedDuelRounds: 0,
+    temporaryMeleeBonus: 0,
+  };
+  state.characters[character.id] = character;
+  state.blocks[hostBlockId]!.characterId = character.id;
+  formation.leaderCharacterId = character.id;
+}
+
+function addFormation(
+  state: GameState,
+  definition: Pick<RomanFormationDefinition, "id" | "name" | "count" | "companion" | "archetypeId">,
+  positions: readonly GridPosition[],
+): void {
+  const archetype = getUnitArchetype(definition.archetypeId);
+  const formationMode: FormationMode = archetype.type === "archers" ? "open" : "closed";
+  const formation: Formation = {
+    id: definition.id,
+    factionId: "roman",
+    name: definition.name,
+    blockIds: [],
+    facing: "north",
+    formationMode,
+    unit: unitProfile(archetype),
+    cohesion: Math.max(1, Math.min(10, Math.round(archetype.gameplay.morale.startingMorale / 10))),
+    maxCohesion: 10,
+    initialModelCount: definition.count,
+    casualtyMoraleStage: 0,
+    movementRemaining: BALANCE.movement[gridUnitType(archetype)],
+    hasActivated: false,
+    leaderCharacterId: null,
+    status: "formed",
+    ...(archetype.rangedWeapon
+      ? { ammunition: getRangedWeaponProfile(archetype.rangedWeapon.id).maximumAmmunition }
+      : {}),
+  };
+  const capacity = modelCapacity(formation);
+  const requiredBlocks = Math.ceil(definition.count / capacity);
+  if (positions.length !== requiredBlocks) {
+    throw new Error(`${definition.name} needs ${requiredBlocks} deployment blocks, received ${positions.length}.`);
+  }
+  formation.blockIds = positions.map((position, index) => {
+    const id = `${definition.id}-b${index + 1}`;
+    state.blocks[id] = {
+      id,
+      factionId: "roman",
+      formationId: definition.id,
+      position: { ...position },
+      models: Math.min(capacity, definition.count - index * capacity),
+      modelCapacity: capacity,
+      wounds: 0,
+      disorder: 0,
+      characterId: null,
+      hasRetreatedThisRound: false,
+      isContested: false,
+      chargeDistance: 0,
+      chargeMomentum: 0,
+    };
+    return id;
+  });
+  state.formations[formation.id] = formation;
+  addCharacter(state, definition as RomanFormationDefinition, formation);
+}
+
+function placementKind(archetype: UnitArchetypeProfile): keyof Pick<DeploymentLayout, "infantry" | "cavalry" | "archers"> {
+  if (archetype.type === "cavalry") return "cavalry";
+  if (archetype.type === "archers") return "archers";
+  return "infantry";
+}
+
+function addWallArchers(state: GameState, positions: readonly GridPosition[]): void {
+  const sagittarii = ROMAN_FORMATION_BY_ID.get("R-ARCH");
+  if (!sagittarii) throw new Error("The wall archer definition is missing.");
+  addFormation(state, {
+    ...sagittarii,
+    id: "wall-archers",
+    name: "Allied Wall Archers",
+    count: 25,
+    companion: { ...sagittarii.companion, id: "wall-archer-captain", name: "Wall Archer Captain" },
+  }, positions);
+}
+
+/** Replaces the prototype Roman force with the formations selected at the campaign war council. */
+export function applyCampaignRomanDeployment(
+  state: GameState,
+  missionId: string,
+  selectedFormationIds: readonly string[],
+): void {
+  const layout = DEPLOYMENT_LAYOUTS[missionId];
+  if (!layout) throw new Error(`No Roman deployment layout exists for mission ${missionId}.`);
+  const uniqueIds = [...new Set(selectedFormationIds)];
+  if (uniqueIds.length !== selectedFormationIds.length) throw new Error("A campaign formation cannot deploy twice.");
+
+  const definitions = uniqueIds.map((id) => {
+    const definition = ROMAN_FORMATION_BY_ID.get(id);
+    if (!definition) throw new Error(`Unknown Roman campaign formation ${id}.`);
+    return definition;
+  });
+
+  removeRomanDeployments(state);
+  const used = { infantry: 0, cavalry: 0, archers: 0 };
+  for (const definition of definitions) {
+    const kind = placementKind(getUnitArchetype(definition.archetypeId));
+    const positions = layout[kind][used[kind]++];
+    if (!positions) throw new Error(`Mission ${missionId} has no remaining ${kind} deployment slot.`);
+    addFormation(state, definition, positions);
+  }
+  if (layout.wallArchers) addWallArchers(state, layout.wallArchers);
+}

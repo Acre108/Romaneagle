@@ -1,64 +1,59 @@
 import "./style.css";
-import { Game, type BattleReport } from "./core/Game";
-import type { RendererMode } from "./rendering/Renderer";
+import { CustomMapGame, Game } from "./core/Game";
+import type { BattleFormationResult, BattleReport } from "./campaign/BattleReport";
+import {
+  deployedStrength,
+  formationCasualties,
+  formationExperience,
+  formationHealthLabel,
+  formationHealthPercent,
+} from "./campaign/CampaignRules";
+import {
+  CAMPAIGNS,
+  CAMPAIGN_BY_ID,
+  MISSION_BY_ID,
+  campaignCompletion,
+  currentMissionForCampaign,
+  isMissionUnlocked,
+} from "./campaign/CampaignCatalog";
+import type { CampaignDefinition, MissionDefinition } from "./campaign/CampaignTypes";
+import {
+  completeMission,
+  loadCampaignProgress,
+  saveCampaignProgress,
+} from "./campaign/CampaignProgress";
+import {
+  COMPANION_BY_ID,
+  ROMAN_FORMATION_BY_ID,
+  ROMAN_FORMATIONS,
+  type CompanionDefinition,
+  type RomanFormationDefinition,
+} from "./scenario/Roster";
+import { applyCompanionPortrait } from "./ui/Portraits";
+import { getUnitArchetype } from "./units/UnitArchetypes";
+import { TEST_SCENARIO_MISSION } from "./campaign/missions/TestScenarioMission";
+import {
+  DEFAULT_TEST_UNIT_IDS,
+  TEST_SAXON_SPECS,
+  TEST_UNIT_OPTIONS,
+  type TestUnitOption,
+} from "./scenario/TestScenario";
+import {
+  formatProfileClassification,
+  formatProfileEquipment,
+  formatProfileHandling,
+  formatProfileSpeciality,
+} from "./units/UnitPresentation";
+import { MapEditor } from "./mapEditor/MapEditor";
+import {
+  listProjectMaps,
+  loadProjectMap,
+  type ProjectMapSummary,
+} from "./mapEditor/MapStorage";
 
-interface Companion {
-  name: string;
-  role: string;
-  initials: string;
-  line: string;
-  trustReply: string;
-  concernReply: string;
-}
-
-const companions: Record<string, Companion> = {
-  flavia: {
-    name: "Flavia Marcellus",
-    role: "Commander · I Cohort Prima",
-    initials: "FM",
-    line: "“Give Prima the bridge. The river will guard one flank, and our shields will answer for the other.”",
-    trustReply: "“Then Prima will be the stone in the river. Nothing crosses while I draw breath.”",
-    concernReply: "“Let them try. Keep the archers watching the shallows and I will turn to meet them.”",
-  },
-  cassian: {
-    name: "Cassian Corvus",
-    role: "Commander · II Cohort Secunda",
-    initials: "CC",
-    line: "“Wulfgar wants us fixed at the bridge. I would hold Secunda back until his centre commits.”",
-    trustReply: "“A reserve is only cowardice when it arrives late. Mine will arrive at the killing hour.”",
-    concernReply: "“Then place me in the line. I will obey—but we surrender the one surprise we possess.”",
-  },
-  brennos: {
-    name: "Brennos of Venta",
-    role: "Commander · Equites Honoriani",
-    initials: "BV",
-    line: "“The eastern bank is firm enough for horses. Loose my riders there and their bowmen will never see noon.”",
-    trustReply: "“Good. We will ride beyond their sight, then come back like winter.”",
-    concernReply: "“If the ground fails us, we dismount. A spear is still a spear, even in the mud.”",
-  },
-  aelia: {
-    name: "Aelia Naso",
-    role: "Commander · Britannic Sagittarii",
-    initials: "AN",
-    line: "“Twelve volleys. Enough to break one advance, not two. Tell me which enemy matters most.”",
-    trustReply: "“The Raven Banner, then. When it falls, every Saxon on that bank will feel alone.”",
-    concernReply: "“Then keep me close to the standard. I can preserve the arrows until their shields are turned.”",
-  },
-};
-
-const companionByUnitId: Record<string, string> = {
-  "R-I": "flavia",
-  "R-II": "cassian",
-  "R-CAV": "brennos",
-  "R-ARCH": "aelia",
-};
-
-const afterBattleLines: Record<string, string> = {
-  flavia: "“The bridge is ours. Prima held, though I will hear their shields in my sleep for a while.”",
-  cassian: "“A soldier who can still complain can still march. We bought the north another day.”",
-  brennos: "“And Wulfgar’s bowmen learned that mud does not make a horse any less angry.”",
-  aelia: "“Save the boasting for camp. We have wounded to count—and arrows to pull from Roman shields.”",
-};
+const campaignEvents = new AbortController();
+const listenerOptions = { signal: campaignEvents.signal };
+let campaignProgress = loadCampaignProgress(window.localStorage);
 
 const requiredElement = <T extends HTMLElement>(id: string): T => {
   const found = document.getElementById(id);
@@ -66,46 +61,280 @@ const requiredElement = <T extends HTMLElement>(id: string): T => {
   return found as T;
 };
 
-let activeCompanion = "flavia";
-let game: Game | undefined;
+const companionFormation = new Map(
+  ROMAN_FORMATIONS.map((formation) => [formation.companion.id, formation]),
+);
+
+let activeCampaign: CampaignDefinition | undefined;
+let activeMission: MissionDefinition | undefined;
+let activeFormations: RomanFormationDefinition[] = [];
+let activeCompanion = "";
+let game: Game | CustomMapGame | undefined;
 let deployedUnitIds: string[] = [];
+let lastBattleReport: BattleReport | undefined;
 let cutsceneStep = 0;
 let cutsceneSpeakers: string[] = [];
+let launchTimer: number | undefined;
+let testScenarioActive = false;
+let customMapBattleActive = false;
+let mapEditor: MapEditor | undefined;
+const selectedTestUnitIds = new Set(DEFAULT_TEST_UNIT_IDS);
 
-function showCompanion(id: string): void {
-  const companion = companions[id];
-  if (!companion) return;
-  activeCompanion = id;
-  requiredElement("speaker-name").textContent = companion.name;
-  requiredElement("speaker-role").textContent = companion.role;
-  requiredElement("speaker-line").textContent = companion.line;
-  const portrait = requiredElement("speaker-portrait");
-  portrait.dataset.initials = companion.initials;
-  portrait.querySelector("span")!.textContent = companion.initials;
-  document.querySelectorAll<HTMLElement>(".formation-card").forEach((card) => {
-    card.classList.toggle("speaking", card.dataset.companion === id);
+function missionFormationDefinitions(mission: MissionDefinition): RomanFormationDefinition[] {
+  return mission.deployment.formationIds.map((id) => {
+    const formation = ROMAN_FORMATION_BY_ID.get(id);
+    if (!formation) throw new Error(`Mission ${mission.id} references missing formation ${id}`);
+    return formation;
   });
 }
 
+function createCampaignCard(campaign: CampaignDefinition): HTMLElement {
+  const completion = campaignCompletion(campaign, campaignProgress.completedMissions);
+  const available = campaign.available && campaign.missions.length > 0;
+  const currentMission = currentMissionForCampaign(campaign, campaignProgress);
+  const card = document.createElement("article");
+  card.className = `campaign-card ${available ? "available" : "locked"}`;
+
+  const number = document.createElement("span");
+  number.className = "campaign-number";
+  number.textContent = campaign.numeral;
+  const kicker = document.createElement("p");
+  kicker.className = "campaign-kicker";
+  kicker.textContent = campaign.kicker;
+  const title = document.createElement("h2");
+  title.textContent = campaign.title;
+  const description = document.createElement("p");
+  description.textContent = campaign.description;
+  card.append(number, kicker, title, description);
+
+  if (!available || !currentMission) {
+    const locked = document.createElement("span");
+    locked.className = "campaign-lock";
+    locked.textContent = "COMING SOON";
+    card.append(locked);
+    return card;
+  }
+
+  const progress = document.createElement("div");
+  progress.className = "campaign-progress";
+  const track = document.createElement("i");
+  const fill = document.createElement("em");
+  fill.style.width = `${completion.percent}%`;
+  track.append(fill);
+  const status = document.createElement("span");
+  status.textContent = completion.completed === completion.total
+    ? `Campaign current · ${completion.completed} of ${completion.total}`
+    : `Mission ${currentMission.sequence} ready · ${completion.completed} of ${completion.total}`;
+  progress.append(track, status);
+
+  const button = document.createElement("button");
+  button.className = "select-campaign";
+  button.dataset.campaign = campaign.id;
+  const buttonTitle = document.createElement("span");
+  buttonTitle.textContent = completion.completed > 0 ? "CONTINUE CAMPAIGN" : "ENTER CAMPAIGN";
+  const buttonDetail = document.createElement("small");
+  buttonDetail.textContent = `${currentMission.title} · ${currentMission.dateLabel}`;
+  button.append(buttonTitle, buttonDetail);
+  card.append(progress, button);
+  return card;
+}
+
+function renderCampaignSelection(): void {
+  requiredElement("campaign-grid").replaceChildren(...CAMPAIGNS.map(createCampaignCard));
+}
+
+function createTestUnitCard(option: TestUnitOption): HTMLElement {
+  const profile = getUnitArchetype(option.archetypeId);
+  const selected = selectedTestUnitIds.has(option.id);
+  const card = document.createElement("article");
+  card.className = `test-unit-card${selected ? " selected" : ""}`;
+  card.tabIndex = 0;
+  card.setAttribute("role", "checkbox");
+  card.setAttribute("aria-checked", String(selected));
+  card.dataset.testUnitId = option.id;
+  const name = document.createElement("h3");
+  name.textContent = option.name;
+  const role = document.createElement("p");
+  role.className = "test-unit-role";
+  role.textContent = formatProfileClassification(profile);
+  const meta = document.createElement("div");
+  meta.className = "test-unit-meta";
+  const strength = document.createElement("span");
+  strength.textContent = `${option.strength} strength`;
+  const handling = document.createElement("span");
+  handling.textContent = formatProfileHandling(profile);
+  meta.append(strength, handling);
+  const equipment = document.createElement("p");
+  equipment.className = "test-unit-equipment";
+  equipment.textContent = formatProfileEquipment(profile);
+  const speciality = document.createElement("p");
+  speciality.className = "test-unit-speciality";
+  speciality.textContent = formatProfileSpeciality(profile);
+  const check = document.createElement("span");
+  check.className = "test-unit-check";
+  check.setAttribute("aria-hidden", "true");
+  check.textContent = "✓";
+  card.append(name, role, meta, equipment, speciality, check);
+  return card;
+}
+
+function updateTestDeployment(): void {
+  const selected = TEST_UNIT_OPTIONS.filter((option) => selectedTestUnitIds.has(option.id));
+  const deployment = TEST_SCENARIO_MISSION.deployment;
+  requiredElement("test-unit-count").textContent = String(selected.length);
+  requiredElement("test-deployed-strength").textContent = String(
+    selected.reduce((total, option) => total + option.strength, 0),
+  );
+  requiredElement<HTMLButtonElement>("begin-test-scenario").disabled =
+    selected.length < deployment.minimum || selected.length > deployment.maximum;
+  requiredElement("test-deployment-warning").textContent = selected.length < deployment.minimum
+    ? `Select at least ${deployment.minimum} formation.`
+    : selected.length > deployment.maximum
+      ? `Only ${deployment.maximum} formations may deploy.`
+      : deployment.note;
+}
+
+function renderTestScenario(): void {
+  requiredElement("test-unit-grid").replaceChildren(
+    ...TEST_UNIT_OPTIONS.map(createTestUnitCard),
+  );
+  const opposition = TEST_SAXON_SPECS
+    .filter((spec) => spec.archetypeId !== "saxon-standard")
+    .map((spec) => {
+      const profile = getUnitArchetype(spec.archetypeId);
+      const row = document.createElement("div");
+      const name = document.createElement("span");
+      name.textContent = spec.name;
+      const role = document.createElement("small");
+      role.textContent = profile.unitClass;
+      row.append(name, role);
+      return row;
+    });
+  requiredElement("test-opposition-list").replaceChildren(...opposition);
+  updateTestDeployment();
+}
+
+function toggleTestUnit(card: HTMLElement): void {
+  const id = card.dataset.testUnitId;
+  if (!id) return;
+  const deployment = TEST_SCENARIO_MISSION.deployment;
+  if (!selectedTestUnitIds.has(id) && selectedTestUnitIds.size >= deployment.maximum) {
+    requiredElement("test-deployment-warning").textContent =
+      `Only ${deployment.maximum} formations may deploy.`;
+    return;
+  }
+  if (selectedTestUnitIds.has(id)) selectedTestUnitIds.delete(id);
+  else selectedTestUnitIds.add(id);
+  card.classList.toggle("selected", selectedTestUnitIds.has(id));
+  card.setAttribute("aria-checked", String(selectedTestUnitIds.has(id)));
+  updateTestDeployment();
+}
+
+function openTestScenario(): void {
+  testScenarioActive = true;
+  activeCampaign = undefined;
+  activeMission = TEST_SCENARIO_MISSION;
+  activeFormations = [];
+  renderTestScenario();
+  setBattleCopy(TEST_SCENARIO_MISSION);
+  requiredElement("campaign-select").hidden = true;
+  requiredElement("campaign-screen").hidden = true;
+  requiredElement("test-scenario-screen").hidden = false;
+}
+
+function createFormationCard(formation: RomanFormationDefinition): HTMLElement {
+  if (!activeMission) throw new Error("Cannot render a formation without an active mission");
+  const archetype = getUnitArchetype(formation.archetypeId);
+  const selected = activeMission.deployment.defaultFormationIds.includes(formation.id);
+  const card = document.createElement("article");
+  card.className = `formation-card${selected ? " selected" : ""}${activeMission.deployment.fixed ? " fixed" : ""}`;
+  card.tabIndex = activeMission.deployment.fixed ? -1 : 0;
+  card.setAttribute("role", "checkbox");
+  card.setAttribute("aria-checked", String(selected));
+  if (activeMission.deployment.fixed) card.setAttribute("aria-disabled", "true");
+  card.dataset.unitId = formation.id;
+  card.dataset.companion = formation.companion.id;
+
+  const portrait = document.createElement("div");
+  portrait.className = `mini-portrait ${formation.companion.portraitTone}`;
+  portrait.setAttribute("aria-hidden", "true");
+  const initials = document.createElement("span");
+  initials.textContent = formation.companion.initials;
+  portrait.append(initials);
+  applyCompanionPortrait(portrait, formation.companion);
+
+  const copy = document.createElement("div");
+  copy.className = "formation-copy";
+  const heading = document.createElement("div");
+  const name = document.createElement("h3");
+  name.textContent = formation.name;
+  const readiness = document.createElement("span");
+  readiness.className = "readiness ready";
+  readiness.textContent = "READY";
+  heading.append(name, readiness);
+  const role = document.createElement("p");
+  role.textContent = `${formation.companion.name} · ${formation.campaignRole}`;
+  const stats = document.createElement("div");
+  stats.className = "formation-stats";
+  const strength = document.createElement("span");
+  strength.textContent = `${formation.count} ${archetype.type === "cavalry" ? "riders" : archetype.type === "archers" ? "archers" : "soldiers"}`;
+  const trait = document.createElement("span");
+  trait.textContent = formation.campaignTrait;
+  const handling = document.createElement("span");
+  handling.textContent = formatProfileHandling(archetype);
+  stats.append(strength, trait, handling);
+  const equipment = document.createElement("p");
+  equipment.className = "formation-equipment";
+  equipment.textContent = formatProfileEquipment(archetype);
+  const speciality = document.createElement("p");
+  speciality.className = "formation-speciality";
+  speciality.textContent = formatProfileSpeciality(archetype);
+  copy.append(heading, role, stats, equipment, speciality);
+
+  const check = document.createElement("span");
+  check.className = "formation-check";
+  check.setAttribute("aria-hidden", "true");
+  check.textContent = "✓";
+  const talk = document.createElement("button");
+  talk.className = "talk-button";
+  talk.dataset.talk = formation.companion.id;
+  talk.textContent = "Speak";
+  card.append(portrait, copy, check, talk);
+  return card;
+}
+
+function selectedFormationCards(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(".formation-card.selected")];
+}
+
 function updateDeployment(): void {
-  const selected = [...document.querySelectorAll<HTMLElement>(".formation-card.selected")];
-  const strength = selected.reduce((total, card) => {
-    if (card.dataset.unitId === "R-CAV") return total + 50;
-    if (card.dataset.unitId === "R-ARCH") return total + 60;
-    return total + 80;
-  }, 0);
+  if (!activeMission) return;
+  const selected = selectedFormationCards();
+  const selectedIds = new Set(
+    selected.map((card) => card.dataset.unitId).filter((id): id is string => id !== undefined),
+  );
+  const deployment = activeMission.deployment;
   requiredElement("formation-count").textContent = String(selected.length);
-  requiredElement("deployed-strength").textContent = String(strength);
-  requiredElement<HTMLButtonElement>("begin-battle").disabled = selected.length < 2;
-  requiredElement("deployment-warning").textContent = selected.length < 2
-    ? "Select at least two formations before marching."
-    : selected.length < 4 ? `${4 - selected.length} formation${selected.length === 3 ? "" : "s"} will remain at camp.` : "";
+  requiredElement("formation-limit").textContent = String(deployment.maximum);
+  requiredElement("deployed-strength").textContent = String(deployedStrength(activeFormations, selectedIds));
+  requiredElement<HTMLButtonElement>("begin-battle").disabled =
+    selected.length < deployment.minimum || selected.length > deployment.maximum;
+  requiredElement("deployment-warning").textContent = selected.length < deployment.minimum
+    ? `Select at least ${deployment.minimum} formations.`
+    : selected.length > deployment.maximum
+      ? `Only ${deployment.maximum} formations may deploy.`
+      : deployment.note;
 }
 
 function toggleFormation(card: HTMLElement): void {
-  const selectedCount = document.querySelectorAll(".formation-card.selected").length;
-  if (card.classList.contains("selected") && selectedCount <= 2) {
-    requiredElement("deployment-warning").textContent = "At least two formations must deploy.";
+  if (!activeMission || activeMission.deployment.fixed) return;
+  const selectedCount = selectedFormationCards().length;
+  if (!card.classList.contains("selected") && selectedCount >= activeMission.deployment.maximum) {
+    requiredElement("deployment-warning").textContent = `Only ${activeMission.deployment.maximum} formations may deploy.`;
+    return;
+  }
+  if (card.classList.contains("selected") && selectedCount <= activeMission.deployment.minimum) {
+    requiredElement("deployment-warning").textContent = `At least ${activeMission.deployment.minimum} formations must deploy.`;
     return;
   }
   card.classList.toggle("selected");
@@ -113,45 +342,187 @@ function toggleFormation(card: HTMLElement): void {
   updateDeployment();
 }
 
-function healthLabel(health: number, state: string): string {
-  if (state === "broken" || health === 0) return "Lost";
-  if (health < 35) return "Mauled";
-  if (health < 70) return "Bloodied";
-  return "Battle-ready";
+function missionDialogue(companion: CompanionDefinition) {
+  return activeMission?.dialogueByCompanionId[companion.id] ?? companion;
 }
 
-function experienceFor(health: number, type: string): number {
-  const formationBonus = type === "standard" ? 10 : 25;
-  return 35 + formationBonus + Math.round(health * .35);
+function showCompanion(id: string): void {
+  const companion = COMPANION_BY_ID.get(id);
+  if (!companion) return;
+  const dialogue = missionDialogue(companion);
+  activeCompanion = id;
+  requiredElement("speaker-name").textContent = companion.name;
+  requiredElement("speaker-role").textContent = companion.role;
+  requiredElement("speaker-line").textContent = dialogue.briefingLine;
+  const portrait = requiredElement("speaker-portrait");
+  portrait.dataset.initials = companion.initials;
+  portrait.querySelector("span")!.textContent = companion.initials;
+  applyCompanionPortrait(portrait, companion);
+  document.querySelectorAll<HTMLElement>(".formation-card").forEach((card) => {
+    card.classList.toggle("speaking", card.dataset.companion === id);
+  });
 }
 
-function showVictoryDebrief(report: BattleReport): void {
-  if (report.outcome !== "romanVictory") return;
+function renderMissionList(campaign: CampaignDefinition, mission: MissionDefinition): void {
+  const completed = new Set(campaignProgress.completedMissions);
+  const buttons = campaign.missions.map((candidate) => {
+    const button = document.createElement("button");
+    button.dataset.mission = candidate.id;
+    button.disabled = !isMissionUnlocked(campaign, candidate, completed);
+    button.classList.toggle("active", candidate.id === mission.id);
+    button.classList.toggle("completed", completed.has(candidate.id));
+    button.textContent = `${candidate.numeral} · ${candidate.title}`;
+    return button;
+  });
+  requiredElement("mission-list").replaceChildren(...buttons);
+}
+
+function setBattleCopy(mission: MissionDefinition): void {
+  requiredElement("battle-date").textContent = mission.dateLabel;
+  requiredElement("battle-objective").textContent = mission.objective;
+  requiredElement("battle-objective-detail").textContent = mission.objectiveDetail;
+  requiredElement("debrief-title").textContent = mission.debrief.title;
+  requiredElement("debrief-detail").textContent = mission.debrief.detail;
+  requiredElement("debrief-footer-copy").textContent = mission.debrief.footer;
+  requiredElement("cutscene-chapter-label").textContent = mission.cutscene.chapterLabel;
+  requiredElement("cutscene-location-label").textContent = mission.cutscene.locationLabel;
+}
+
+function renderCampaignPhase(campaign: CampaignDefinition, mission: MissionDefinition): void {
+  activeCampaign = campaign;
+  activeMission = mission;
+  activeFormations = missionFormationDefinitions(mission);
+  activeCompanion = activeFormations[0]?.companion.id ?? "";
+  campaignProgress = {
+    ...campaignProgress,
+    selectedCampaignId: campaign.id,
+    selectedMissionIds: { ...campaignProgress.selectedMissionIds, [campaign.id]: mission.id },
+  };
+  saveCampaignProgress(window.localStorage, campaignProgress);
+
+  requiredElement("campaign-phase-title").textContent = campaign.title;
+  requiredElement("campaign-phase-number").textContent = `${campaign.numeral} of ${CAMPAIGNS.length}`;
+  requiredElement("mission-phase-number").textContent = String(mission.sequence);
+  requiredElement("mission-roman").textContent = mission.numeral;
+  requiredElement("mission-kicker").textContent = mission.chapterLabel;
+  requiredElement("mission-title-lead").textContent = mission.titleLead;
+  requiredElement("mission-title-emphasis").textContent = mission.titleEmphasis;
+  requiredElement("mission-lede").textContent = mission.description;
+  requiredElement("mission-objective").textContent = mission.objective;
+
+  const facts = mission.facts.map((fact) => {
+    const row = document.createElement("div");
+    const term = document.createElement("dt");
+    term.textContent = fact.label;
+    const detail = document.createElement("dd");
+    detail.textContent = fact.value;
+    row.append(term, detail);
+    return row;
+  });
+  requiredElement("mission-facts").replaceChildren(...facts);
+  requiredElement("scout-report-copy").textContent = mission.scoutReport;
+  requiredElement("scout-report-attribution").textContent = mission.scoutAttribution;
+  const rewardElements = mission.rewards.map((reward) => {
+    const span = document.createElement("span");
+    const value = document.createElement("b");
+    value.textContent = reward.value;
+    span.append(value, ` ${reward.label}`);
+    return span;
+  });
+  requiredElement("mission-reward").replaceChildren(
+    Object.assign(document.createElement("small"), { textContent: "REWARD" }),
+    ...rewardElements,
+  );
+
+  const map = requiredElement("campaign-map");
+  map.className = `campaign-map map-${mission.map.theme}`;
+  map.setAttribute("aria-label", mission.map.ariaLabel);
+  requiredElement("map-primary-label").textContent = mission.map.primaryLabel;
+  requiredElement("map-crossing-label").textContent = mission.map.crossingLabel;
+  requiredElement("map-home-label").textContent = mission.map.homeLabel;
+  requiredElement("map-player-pin").textContent = mission.map.playerPinLabel;
+  requiredElement("map-enemy-pin").textContent = mission.map.enemyPinLabel;
+  requiredElement("map-distance").textContent = mission.map.distanceLabel;
+
+  requiredElement("roster-help").textContent = mission.deployment.help;
+  requiredElement<HTMLButtonElement>("begin-battle").querySelector("span")!.textContent =
+    campaignProgress.completedMissions.includes(mission.id) ? "REPLAY MISSION" : "BEGIN MISSION";
+  requiredElement<HTMLButtonElement>("begin-battle").querySelector("small")!.textContent = mission.launchLabel;
+  requiredElement("campaign-date").textContent = mission.dateLabel;
+  requiredElement("campaign-region").textContent = mission.regionLabel;
+  renderMissionList(campaign, mission);
+  requiredElement("formation-list").replaceChildren(...activeFormations.map(createFormationCard));
+  setBattleCopy(mission);
+  updateDeployment();
+  if (activeCompanion) showCompanion(activeCompanion);
+}
+
+function resultRow(formation: BattleFormationResult): HTMLElement {
+  const health = formationHealthPercent(formation);
+  const row = document.createElement("article");
+  row.className = "formation-result-row";
+  const insignia = document.createElement("span");
+  insignia.className = `result-insignia ${formation.type}`;
+  insignia.setAttribute("aria-hidden", "true");
+  insignia.textContent = formation.id.replace("R-", "");
+  const formationCopy = document.createElement("div");
+  formationCopy.className = "result-formation";
+  const name = document.createElement("b");
+  name.textContent = formation.name;
+  const detail = document.createElement("small");
+  detail.textContent = `${formation.type} · ${formationHealthLabel(formation)}`;
+  formationCopy.append(name, detail);
+  const healthDisplay = document.createElement("div");
+  healthDisplay.className = "result-health";
+  const count = document.createElement("span");
+  const surviving = document.createElement("b");
+  surviving.textContent = String(formation.soldierCount);
+  count.append(surviving, ` / ${formation.maximumSoldiers}`);
+  const bar = document.createElement("i");
+  const fill = document.createElement("em");
+  fill.style.width = `${health}%`;
+  bar.append(fill);
+  const casualties = document.createElement("small");
+  const casualtyCount = formationCasualties(formation);
+  casualties.className = "result-casualties";
+  casualties.textContent = casualtyCount === 0 ? "No losses" : `${casualtyCount} lost`;
+  healthDisplay.append(count, casualties, bar);
+  const experience = document.createElement("strong");
+  experience.className = "result-xp";
+  experience.textContent = `+${formationExperience(formation)} XP`;
+  row.append(insignia, formationCopy, healthDisplay, experience);
+  return row;
+}
+
+function handleBattleEnded(report: BattleReport): void {
+  if (!activeMission) return;
+  if (testScenarioActive) {
+    lastBattleReport = report;
+    const returnButton = requiredElement<HTMLButtonElement>("return-from-battle");
+    returnButton.hidden = false;
+    returnButton.querySelector("span")!.textContent = "RETURN TO TEST DEPLOYMENT";
+    returnButton.querySelector("small")!.textContent = "Choose another Roman force";
+    return;
+  }
+  const returnButton = requiredElement<HTMLButtonElement>("return-from-battle");
+  returnButton.querySelector("span")!.textContent = "RETURN TO CAMPAIGN";
+  returnButton.querySelector("small")!.textContent = "Back to the campaign phase";
+  if (report.outcome !== "romanVictory") {
+    returnButton.hidden = false;
+    return;
+  }
+  campaignProgress = completeMission(campaignProgress, activeMission.id);
+  saveCampaignProgress(window.localStorage, campaignProgress);
+  renderCampaignSelection();
+  lastBattleReport = report;
   const battle = requiredElement("battle-screen");
   const results = requiredElement("formation-results");
   let companyExperience = 0;
   battle.classList.add("debrief-active");
   results.replaceChildren();
   for (const formation of report.formations) {
-    const health = formation.maximumSoldiers === 0
-      ? 0
-      : Math.round(formation.soldierCount / formation.maximumSoldiers * 100);
-    const experience = experienceFor(health, formation.type);
-    companyExperience += experience;
-    const row = document.createElement("article");
-    row.className = "formation-result-row";
-    row.innerHTML = `
-      <span class="result-insignia ${formation.type}" aria-hidden="true">${formation.id.replace("R-", "")}</span>
-      <div class="result-formation">
-        <b>${formation.name}</b>
-        <small>${formation.type} · ${healthLabel(health, formation.state)}</small>
-      </div>
-      <div class="result-health">
-        <span><b>${formation.soldierCount}</b> / ${formation.maximumSoldiers}</span>
-        <i><em style="width:${health}%"></em></i>
-      </div>
-      <strong class="result-xp">+${experience} XP</strong>`;
-    results.append(row);
+    companyExperience += formationExperience(formation);
+    results.append(resultRow(formation));
   }
   requiredElement("company-experience").textContent = `+${companyExperience} XP`;
   requiredElement("victory-debrief").hidden = false;
@@ -159,24 +530,43 @@ function showVictoryDebrief(report: BattleReport): void {
 
 function cutsceneParticipants(): string[] {
   const selected = deployedUnitIds
-    .map((id) => companionByUnitId[id])
+    .map((id) => ROMAN_FORMATION_BY_ID.get(id)?.companion.id)
     .filter((id): id is string => id !== undefined);
-  const participants = selected.length >= 2 ? selected : ["flavia", "cassian"];
-  return [...participants, participants[0] ?? "flavia"];
+  const fallbacks = activeFormations.slice(0, 2).map((formation) => formation.companion.id);
+  const participants = selected.length >= 2 ? selected : fallbacks;
+  return [...participants, participants[0] ?? activeCompanion];
+}
+
+function formationResultFor(companionId: string): BattleFormationResult | undefined {
+  const unitId = companionFormation.get(companionId)?.id;
+  return lastBattleReport?.formations.find((formation) => formation.id === unitId);
+}
+
+function afterBattleCopy(companion: CompanionDefinition): string {
+  const dialogue = missionDialogue(companion);
+  const formation = formationResultFor(companion.id);
+  if (!formation) return dialogue.afterBattleLine;
+  const health = formationHealthPercent(formation);
+  if (formation.state === "broken" || formation.state === "escaped" || health === 0) return dialogue.lostLine;
+  if (formation.state === "routing" || formation.state === "shaken" || health < 55) return dialogue.bloodiedLine;
+  return dialogue.afterBattleLine;
 }
 
 function renderCutsceneStep(): void {
-  const speakerId = cutsceneSpeakers[cutsceneStep] ?? "flavia";
-  const speaker = companions[speakerId];
+  if (!activeMission) return;
+  const speakerId = cutsceneSpeakers[cutsceneStep] ?? activeCompanion;
+  const speaker = COMPANION_BY_ID.get(speakerId);
   if (!speaker) return;
   const portrait = requiredElement("cutscene-portrait");
-  portrait.className = `cutscene-portrait portrait-${speakerId} ${cutsceneStep % 2 === 0 ? "portrait-left" : "portrait-right"}`;
+  portrait.className = `cutscene-portrait portrait-${speaker.portraitTone} ${cutsceneStep % 2 === 0 ? "portrait-left" : "portrait-right"}`;
+  portrait.dataset.initials = speaker.initials;
+  applyCompanionPortrait(portrait, speaker);
   requiredElement("post-battle-cutscene").classList.toggle("speaker-right", cutsceneStep % 2 === 1);
   requiredElement("cutscene-speaker-name").textContent = speaker.name;
   requiredElement("cutscene-speaker-role").textContent = speaker.role;
   requiredElement("cutscene-line").textContent = cutsceneStep === cutsceneSpeakers.length - 1
-    ? "“See to the wounded. At first light, we carry word of Caer Durn back to the company.”"
-    : afterBattleLines[speakerId] ?? speaker.line;
+    ? activeMission.cutscene.closingLine
+    : afterBattleCopy(speaker);
   const progress = requiredElement("cutscene-progress");
   progress.replaceChildren();
   cutsceneSpeakers.forEach((_, index) => {
@@ -198,94 +588,357 @@ function showPostBattleCutscene(): void {
   renderCutsceneStep();
 }
 
-function returnToCampaign(): void {
-  window.sessionStorage.setItem("last-eagle-caer-durn-complete", "true");
-  window.location.assign(window.location.pathname);
+function returnToCampaignPhase(): void {
+  game?.stop();
+  game = undefined;
+  const battle = requiredElement("battle-screen");
+  battle.hidden = true;
+  battle.classList.remove("debrief-active");
+  requiredElement("battle-result").hidden = true;
+  requiredElement("victory-debrief").hidden = true;
+  requiredElement("post-battle-cutscene").hidden = true;
+  requiredElement<HTMLButtonElement>("return-from-battle").hidden = true;
+  if (customMapBattleActive) {
+    customMapBattleActive = false;
+    activeCampaign = undefined;
+    activeMission = undefined;
+    requiredElement("campaign-select").hidden = false;
+    requiredElement("campaign-screen").hidden = true;
+    requiredElement("test-scenario-screen").hidden = true;
+    renderCampaignSelection();
+    return;
+  }
+  if (testScenarioActive) {
+    activeMission = TEST_SCENARIO_MISSION;
+    renderTestScenario();
+    setBattleCopy(TEST_SCENARIO_MISSION);
+    const testScreen = requiredElement("test-scenario-screen");
+    testScreen.classList.remove("departing");
+    testScreen.hidden = false;
+    requiredElement("campaign-select").hidden = true;
+    requiredElement("campaign-screen").hidden = true;
+    return;
+  }
+  const campaign = activeCampaign ?? CAMPAIGN_BY_ID.get(campaignProgress.selectedCampaignId);
+  if (!campaign) {
+    requiredElement("campaign-select").hidden = false;
+    return;
+  }
+  const mission = currentMissionForCampaign(campaign, campaignProgress);
+  if (!mission) {
+    requiredElement("campaign-select").hidden = false;
+    return;
+  }
+  renderCampaignPhase(campaign, mission);
+  requiredElement("campaign-screen").classList.remove("departing");
+  requiredElement("campaign-screen").hidden = false;
+  requiredElement("campaign-select").hidden = true;
+}
+
+function openCampaign(campaignId: string): void {
+  const campaign = CAMPAIGN_BY_ID.get(campaignId);
+  if (!campaign?.available) return;
+  const mission = currentMissionForCampaign(campaign, campaignProgress);
+  if (!mission) return;
+  testScenarioActive = false;
+  customMapBattleActive = false;
+  renderCampaignPhase(campaign, mission);
+  requiredElement("campaign-select").hidden = true;
+  requiredElement("campaign-screen").hidden = false;
+}
+
+function launchBattle(
+  sourceScreen: HTMLElement,
+  mission: MissionDefinition,
+  selectedUnitIds: readonly string[],
+): void {
+  if (launchTimer !== undefined) return;
+  customMapBattleActive = false;
+  deployedUnitIds = [...selectedUnitIds];
+  activeMission = mission;
+  setBattleCopy(mission);
+  const battle = requiredElement("battle-screen");
+  sourceScreen.classList.add("departing");
+  launchTimer = window.setTimeout(() => {
+    sourceScreen.hidden = true;
+    battle.hidden = false;
+    const canvas = requiredElement<HTMLCanvasElement>("battlefield");
+    game?.stop();
+    game = new Game(canvas, mission, deployedUnitIds, handleBattleEnded);
+    game.start();
+    launchTimer = undefined;
+  }, 420);
+}
+
+function launchCustomMapBattle(
+  map: Awaited<ReturnType<typeof loadProjectMap>>,
+  name: string,
+): void {
+  const romanFormations = map.deployments.filter((deployment) => deployment.factionId === "roman").length;
+  const saxonFormations = map.deployments.filter((deployment) => deployment.factionId === "saxon").length;
+  if (romanFormations === 0 || saxonFormations === 0) {
+    requiredElement("saved-map-browser-status").textContent =
+      "A custom battle needs at least one connected Roman formation and one connected Saxon formation.";
+    return;
+  }
+
+  game?.stop();
+  testScenarioActive = false;
+  customMapBattleActive = true;
+  activeCampaign = undefined;
+  activeMission = undefined;
+  requiredElement("saved-map-browser").hidden = true;
+  requiredElement("campaign-select").hidden = true;
+  requiredElement("campaign-screen").hidden = true;
+  requiredElement("test-scenario-screen").hidden = true;
+  requiredElement("map-editor-screen").hidden = true;
+  const battle = requiredElement("battle-screen");
+  battle.classList.remove("debrief-active");
+  battle.hidden = false;
+  requiredElement("battle-result").hidden = true;
+  requiredElement("victory-debrief").hidden = true;
+  requiredElement("post-battle-cutscene").hidden = true;
+  requiredElement<HTMLButtonElement>("return-from-battle").hidden = true;
+  requiredElement("battle-date").textContent = "CUSTOM MAP";
+  requiredElement("battle-objective").textContent = "Defeat all enemy units";
+  requiredElement("battle-objective-detail").textContent =
+    "Break every deployed Saxon formation. Campaign spawnpoints are not used in custom battles.";
+  game = new CustomMapGame(requiredElement<HTMLCanvasElement>("battlefield"), map, name);
+  game.start();
+}
+
+function selectMission(missionId: string): void {
+  if (!activeCampaign) return;
+  const mission = MISSION_BY_ID.get(missionId);
+  if (!mission || mission.campaignId !== activeCampaign.id) return;
+  if (!isMissionUnlocked(activeCampaign, mission, new Set(campaignProgress.completedMissions))) return;
+  renderCampaignPhase(activeCampaign, mission);
 }
 
 function previewVictoryFlow(): void {
-  deployedUnitIds = ["R-I", "R-II", "R-CAV", "R-ARCH"];
+  const campaign = CAMPAIGN_BY_ID.get(campaignProgress.selectedCampaignId) ?? CAMPAIGNS.find((item) => item.available);
+  if (!campaign) return;
+  const mission = currentMissionForCampaign(campaign, campaignProgress);
+  if (!mission) return;
+  renderCampaignPhase(campaign, mission);
+  deployedUnitIds = mission.deployment.defaultFormationIds.slice();
+  requiredElement("campaign-select").hidden = true;
   requiredElement("campaign-screen").hidden = true;
   requiredElement("battle-screen").hidden = false;
-  showVictoryDebrief({
+  handleBattleEnded({
     outcome: "romanVictory",
-    formations: [
-      { id: "R-I", name: "I Cohort · Prima", type: "infantry", soldierCount: 61, maximumSoldiers: 80, state: "steady" },
-      { id: "R-II", name: "II Cohort · Secunda", type: "infantry", soldierCount: 43, maximumSoldiers: 80, state: "shaken" },
-      { id: "R-CAV", name: "Equites Honoriani", type: "cavalry", soldierCount: 37, maximumSoldiers: 50, state: "steady" },
-      { id: "R-ARCH", name: "Britannic Sagittarii", type: "archers", soldierCount: 52, maximumSoldiers: 60, state: "steady" },
-      { id: "R-STD", name: "Draco Standard", type: "standard", soldierCount: 14, maximumSoldiers: 16, state: "steady" },
-    ],
+    formations: activeFormations.map((formation, index) => ({
+      id: formation.id,
+      name: formation.name,
+      type: getUnitArchetype(formation.archetypeId).type,
+      soldierCount: Math.max(0, formation.count - 12 - index * 5),
+      maximumSoldiers: formation.count,
+      state: index === 1 ? "shaken" as const : "steady" as const,
+    })),
   });
 }
 
-document.querySelectorAll<HTMLElement>(".formation-card").forEach((card) => {
-  card.addEventListener("click", (event) => {
-    if ((event.target as HTMLElement).closest(".talk-button")) return;
-    toggleFormation(card);
-  });
-  card.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      toggleFormation(card);
-    }
-  });
-});
+function showMapEditor(map?: Awaited<ReturnType<typeof loadProjectMap>>, name?: string): void {
+  requiredElement("saved-map-browser").hidden = true;
+  requiredElement("campaign-select").hidden = true;
+  requiredElement("map-editor-screen").hidden = false;
+  mapEditor ??= new MapEditor(requiredElement("map-editor-screen"));
+  if (map && name) mapEditor.loadMap(map, name);
+  else mapEditor.refresh();
+}
 
-document.querySelectorAll<HTMLButtonElement>("[data-talk]").forEach((button) => {
-  button.addEventListener("click", () => showCompanion(button.dataset.talk ?? "flavia"));
-});
+function savedMapCard(map: ProjectMapSummary): HTMLElement {
+  const card = document.createElement("article");
+  card.className = "saved-map-card";
+  card.dataset.mapFile = map.fileName;
+  card.dataset.mapName = map.name;
+  const heading = document.createElement("strong");
+  heading.textContent = map.name;
+  const dimensions = document.createElement("span");
+  dimensions.textContent = `${map.width} × ${map.height}`;
+  const fileName = document.createElement("small");
+  fileName.textContent = map.fileName;
+  const deploymentSummary = document.createElement("p");
+  deploymentSummary.textContent =
+    `${map.romanFormations} Roman · ${map.saxonFormations} Saxon · ${map.spawnPoints} campaign spawnpoints`;
+  const actions = document.createElement("div");
+  actions.className = "saved-map-card-actions";
+  const editButton = document.createElement("button");
+  editButton.type = "button";
+  editButton.dataset.mapAction = "edit";
+  editButton.textContent = "EDIT";
+  const battleButton = document.createElement("button");
+  battleButton.type = "button";
+  battleButton.dataset.mapAction = "battle";
+  battleButton.textContent = "BATTLE →";
+  const battleReady = map.romanFormations > 0 && map.saxonFormations > 0;
+  battleButton.disabled = !battleReady;
+  if (!battleReady) battleButton.title = "Deploy at least one Roman and one Saxon formation first.";
+  actions.append(editButton, battleButton);
+  card.append(heading, dimensions, fileName, deploymentSummary, actions);
+  return card;
+}
 
-document.querySelectorAll<HTMLButtonElement>("[data-reply]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const companion = companions[activeCompanion];
-    if (!companion) return;
-    requiredElement("speaker-line").textContent =
-      button.dataset.reply === "trust" ? companion.trustReply : companion.concernReply;
-    document.querySelectorAll<HTMLButtonElement>("[data-reply]").forEach((reply) => {
-      reply.classList.toggle("chosen", reply === button);
-    });
-  });
-});
-
-requiredElement<HTMLButtonElement>("continue-story").addEventListener("click", showPostBattleCutscene);
-requiredElement<HTMLButtonElement>("next-cutscene-line").addEventListener("click", () => {
-  if (cutsceneStep >= cutsceneSpeakers.length - 1) {
-    returnToCampaign();
-    return;
+async function openSavedMapBrowser(): Promise<void> {
+  const browser = requiredElement("saved-map-browser");
+  const list = requiredElement("saved-map-list");
+  const status = requiredElement("saved-map-browser-status");
+  browser.hidden = false;
+  list.replaceChildren();
+  status.textContent = "Reading public/maps…";
+  try {
+    const maps = await listProjectMaps();
+    list.replaceChildren(...maps.map(savedMapCard));
+    status.textContent = maps.length === 0
+      ? "No saved maps yet. Create one in the map editor, then choose Save to project."
+      : `${maps.length} saved ${maps.length === 1 ? "map" : "maps"} available.`;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Saved maps could not be listed.";
+    status.textContent = `${detail} Project-folder loading requires PLAY_GAME.cmd or npm run dev.`;
   }
-  cutsceneStep += 1;
-  renderCutsceneStep();
-});
-
-requiredElement<HTMLButtonElement>("begin-battle").addEventListener("click", () => {
-  const selectedUnitIds = [...document.querySelectorAll<HTMLElement>(".formation-card.selected")]
-    .map((card) => card.dataset.unitId)
-    .filter((id): id is string => id !== undefined);
-  deployedUnitIds = selectedUnitIds;
-  const campaign = requiredElement("campaign-screen");
-  const battle = requiredElement("battle-screen");
-  campaign.classList.add("departing");
-  window.setTimeout(() => {
-    campaign.hidden = true;
-    battle.hidden = false;
-    const canvas = requiredElement<HTMLCanvasElement>("battlefield");
-    const rendererMode: RendererMode =
-      new URLSearchParams(window.location.search).get("renderer") === "topDown" ? "topDown" : "isometric";
-    game = new Game(canvas, rendererMode, selectedUnitIds, showVictoryDebrief);
-    game.start();
-  }, 420);
-});
-
-showCompanion("flavia");
-updateDeployment();
-if (window.sessionStorage.getItem("last-eagle-caer-durn-complete") === "true") {
-  requiredElement("deployment-warning").textContent = "Caer Durn secured · Your commanders carry their experience forward.";
-  requiredElement<HTMLButtonElement>("begin-battle").querySelector("span")!.textContent = "REPLAY MISSION";
-  requiredElement<HTMLButtonElement>("begin-battle").querySelector("small")!.textContent = "Return to Caer Durn";
 }
+
+function bindEvents(): void {
+  requiredElement<HTMLButtonElement>("open-map-editor").addEventListener(
+    "click",
+    () => showMapEditor(),
+    listenerOptions,
+  );
+  requiredElement<HTMLButtonElement>("open-saved-maps").addEventListener(
+    "click",
+    () => void openSavedMapBrowser(),
+    listenerOptions,
+  );
+  requiredElement<HTMLButtonElement>("close-saved-maps").addEventListener(
+    "click",
+    () => { requiredElement("saved-map-browser").hidden = true; },
+    listenerOptions,
+  );
+  requiredElement("saved-map-list").addEventListener("click", (event) => {
+    const actionButton = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-map-action]");
+    const card = actionButton?.closest<HTMLElement>("[data-map-file]");
+    const fileName = card?.dataset.mapFile;
+    const name = card?.dataset.mapName;
+    const action = actionButton?.dataset.mapAction;
+    if (!actionButton || !fileName || !name || !action) return;
+    actionButton.disabled = true;
+    requiredElement("saved-map-browser-status").textContent = `Loading ${fileName}…`;
+    void loadProjectMap(fileName).then((map) => {
+      if (action === "battle") launchCustomMapBattle(map, name);
+      else showMapEditor(map, name);
+    }).catch((error: unknown) => {
+      actionButton.disabled = false;
+      requiredElement("saved-map-browser-status").textContent = error instanceof Error
+        ? error.message
+        : "The selected map could not be loaded.";
+    });
+  }, listenerOptions);
+  requiredElement<HTMLButtonElement>("leave-map-editor").addEventListener("click", () => {
+    requiredElement("map-editor-screen").hidden = true;
+    requiredElement("campaign-select").hidden = false;
+  }, listenerOptions);
+  requiredElement<HTMLButtonElement>("open-test-scenario").addEventListener(
+    "click",
+    openTestScenario,
+    listenerOptions,
+  );
+  requiredElement<HTMLButtonElement>("leave-test-scenario").addEventListener("click", () => {
+    testScenarioActive = false;
+    activeMission = undefined;
+    requiredElement("test-scenario-screen").hidden = true;
+    requiredElement("campaign-select").hidden = false;
+    renderCampaignSelection();
+  }, listenerOptions);
+  requiredElement("test-unit-grid").addEventListener("click", (event) => {
+    const card = (event.target as HTMLElement).closest<HTMLElement>(".test-unit-card");
+    if (card) toggleTestUnit(card);
+  }, listenerOptions);
+  requiredElement("test-unit-grid").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const card = (event.target as HTMLElement).closest<HTMLElement>(".test-unit-card");
+    if (!card) return;
+    event.preventDefault();
+    toggleTestUnit(card);
+  }, listenerOptions);
+  requiredElement<HTMLButtonElement>("begin-test-scenario").addEventListener("click", () => {
+    const selected = TEST_UNIT_OPTIONS
+      .filter((option) => selectedTestUnitIds.has(option.id))
+      .map((option) => option.id);
+    if (selected.length < TEST_SCENARIO_MISSION.deployment.minimum) return;
+    launchBattle(requiredElement("test-scenario-screen"), TEST_SCENARIO_MISSION, selected);
+  }, listenerOptions);
+  requiredElement("campaign-grid").addEventListener("click", (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-campaign]");
+    if (button?.dataset.campaign) openCampaign(button.dataset.campaign);
+  }, listenerOptions);
+  requiredElement("mission-list").addEventListener("click", (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-mission]");
+    if (button?.dataset.mission) selectMission(button.dataset.mission);
+  }, listenerOptions);
+  requiredElement("formation-list").addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    const talk = target.closest<HTMLButtonElement>("[data-talk]");
+    if (talk?.dataset.talk) {
+      showCompanion(talk.dataset.talk);
+      return;
+    }
+    const card = target.closest<HTMLElement>(".formation-card");
+    if (card) toggleFormation(card);
+  }, listenerOptions);
+  requiredElement("formation-list").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const card = (event.target as HTMLElement).closest<HTMLElement>(".formation-card");
+    if (!card) return;
+    event.preventDefault();
+    toggleFormation(card);
+  }, listenerOptions);
+  document.querySelectorAll<HTMLButtonElement>("[data-reply]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const companion = COMPANION_BY_ID.get(activeCompanion);
+      if (!companion) return;
+      const dialogue = missionDialogue(companion);
+      requiredElement("speaker-line").textContent =
+        button.dataset.reply === "trust" ? dialogue.trustReply : dialogue.concernReply;
+      document.querySelectorAll<HTMLButtonElement>("[data-reply]").forEach((reply) => {
+        reply.classList.toggle("chosen", reply === button);
+      });
+    }, listenerOptions);
+  });
+  requiredElement<HTMLButtonElement>("continue-story").addEventListener("click", showPostBattleCutscene, listenerOptions);
+  requiredElement<HTMLButtonElement>("next-cutscene-line").addEventListener("click", () => {
+    if (cutsceneStep >= cutsceneSpeakers.length - 1) {
+      returnToCampaignPhase();
+      return;
+    }
+    cutsceneStep += 1;
+    renderCutsceneStep();
+  }, listenerOptions);
+  requiredElement<HTMLButtonElement>("return-from-battle").addEventListener("click", returnToCampaignPhase, listenerOptions);
+  requiredElement<HTMLButtonElement>("begin-battle").addEventListener("click", () => {
+    if (!activeMission) return;
+    const selected = selectedFormationCards()
+      .map((card) => card.dataset.unitId)
+      .filter((id): id is string => id !== undefined);
+    launchBattle(requiredElement("campaign-screen"), activeMission, selected);
+  }, listenerOptions);
+  document.querySelector<HTMLAnchorElement>(".campaign-brand")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    testScenarioActive = false;
+    requiredElement("campaign-screen").hidden = true;
+    requiredElement("campaign-select").hidden = false;
+    renderCampaignSelection();
+  }, listenerOptions);
+}
+
+renderCampaignSelection();
+bindEvents();
 if (new URLSearchParams(window.location.search).has("debrief")) previewVictoryFlow();
 
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => game?.stop());
+  import.meta.hot.dispose(() => {
+    campaignEvents.abort();
+    if (launchTimer !== undefined) window.clearTimeout(launchTimer);
+    mapEditor?.destroy();
+    game?.stop();
+  });
 }

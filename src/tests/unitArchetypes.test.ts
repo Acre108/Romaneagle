@@ -6,9 +6,8 @@ import {
   getUnitArchetype,
 } from "../units/UnitArchetypes";
 import {
-  formatProfileEquipment,
   formatProfileHandling,
-  formatProfileSpeciality,
+  formatProfileRanged,
 } from "../units/UnitPresentation";
 
 describe("unit archetype catalog", () => {
@@ -105,11 +104,9 @@ describe("unit archetype catalog", () => {
     const ballistarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.ballistariiDetachment);
 
     expect(formatProfileHandling(lanciarii)).toBe("Heavy armour · Medium speed");
-    expect(formatProfileEquipment(lanciarii)).toBe(
-      "Long Spears · Spathae · Large Shields",
-    );
-    expect(formatProfileSpeciality(lanciarii)).toBe("+65% melee vs cavalry");
-    expect(formatProfileSpeciality(ballistarii)).toBe("Deploy in Battery to fire");
+    expect(formatProfileRanged(lanciarii)).toBeNull();
+    expect(formatProfileRanged(getUnitArchetype(ROMAN_ARCHETYPE_IDS.sagittarii))).toBe("Composite bows · 12 volleys");
+    expect(formatProfileRanged(ballistarii)).toContain("salvos");
   });
 
   it("[key] defines valid weapon profiles for current and planned ranged units", () => {

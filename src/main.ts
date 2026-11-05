@@ -40,9 +40,8 @@ import {
 } from "./scenario/TestScenario";
 import {
   formatProfileClassification,
-  formatProfileEquipment,
   formatProfileHandling,
-  formatProfileSpeciality,
+  formatProfileRanged,
 } from "./units/UnitPresentation";
 import { MapEditor } from "./mapEditor/MapEditor";
 import {
@@ -164,17 +163,19 @@ function createTestUnitCard(option: TestUnitOption): HTMLElement {
   const handling = document.createElement("span");
   handling.textContent = formatProfileHandling(profile);
   meta.append(strength, handling);
-  const equipment = document.createElement("p");
-  equipment.className = "test-unit-equipment";
-  equipment.textContent = formatProfileEquipment(profile);
-  const speciality = document.createElement("p");
-  speciality.className = "test-unit-speciality";
-  speciality.textContent = formatProfileSpeciality(profile);
   const check = document.createElement("span");
   check.className = "test-unit-check";
   check.setAttribute("aria-hidden", "true");
   check.textContent = "✓";
-  card.append(name, role, meta, equipment, speciality, check);
+  card.append(name, role, meta);
+  const ranged = formatProfileRanged(profile);
+  if (ranged) {
+    const weapon = document.createElement("p");
+    weapon.className = "test-unit-equipment";
+    weapon.textContent = ranged;
+    card.append(weapon);
+  }
+  card.append(check);
   return card;
 }
 
@@ -276,18 +277,17 @@ function createFormationCard(formation: RomanFormationDefinition): HTMLElement {
   stats.className = "formation-stats";
   const strength = document.createElement("span");
   strength.textContent = `${formation.count} ${archetype.type === "cavalry" ? "riders" : archetype.type === "archers" ? "archers" : "soldiers"}`;
-  const trait = document.createElement("span");
-  trait.textContent = formation.campaignTrait;
   const handling = document.createElement("span");
   handling.textContent = formatProfileHandling(archetype);
-  stats.append(strength, trait, handling);
-  const equipment = document.createElement("p");
-  equipment.className = "formation-equipment";
-  equipment.textContent = formatProfileEquipment(archetype);
-  const speciality = document.createElement("p");
-  speciality.className = "formation-speciality";
-  speciality.textContent = formatProfileSpeciality(archetype);
-  copy.append(heading, role, stats, equipment, speciality);
+  stats.append(strength, handling);
+  copy.append(heading, role, stats);
+  const ranged = formatProfileRanged(archetype);
+  if (ranged) {
+    const weapon = document.createElement("p");
+    weapon.className = "formation-equipment";
+    weapon.textContent = ranged;
+    copy.append(weapon);
+  }
 
   const check = document.createElement("span");
   check.className = "formation-check";

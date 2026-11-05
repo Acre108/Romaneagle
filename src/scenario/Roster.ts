@@ -30,7 +30,6 @@ export interface CompanionDefinition {
 
 export interface RomanFormationDefinition extends FormationDefinition {
   campaignRole: string;
-  campaignTrait: string;
   defaultSelected: boolean;
   companion: CompanionDefinition;
 }
@@ -42,7 +41,6 @@ export const ROMAN_FORMATIONS: readonly RomanFormationDefinition[] = [
     archetypeId: ROMAN_ARCHETYPE_IDS.fieldCentury,
     count: ROMAN_INFANTRY_STRENGTH,
     campaignRole: "Heavy infantry",
-    campaignTrait: "Tortoise",
     defaultSelected: true,
     companion: {
       id: "flavia",
@@ -64,7 +62,6 @@ export const ROMAN_FORMATIONS: readonly RomanFormationDefinition[] = [
     archetypeId: ROMAN_ARCHETYPE_IDS.fieldCentury,
     count: ROMAN_INFANTRY_STRENGTH,
     campaignRole: "Heavy infantry",
-    campaignTrait: "Disciplined",
     defaultSelected: true,
     companion: {
       id: "cassian",
@@ -86,7 +83,6 @@ export const ROMAN_FORMATIONS: readonly RomanFormationDefinition[] = [
     archetypeId: ROMAN_ARCHETYPE_IDS.fieldCentury,
     count: ROMAN_INFANTRY_STRENGTH,
     campaignRole: "Heavy infantry",
-    campaignTrait: "Deep order",
     defaultSelected: true,
     companion: {
       id: "decimus",
@@ -108,7 +104,6 @@ export const ROMAN_FORMATIONS: readonly RomanFormationDefinition[] = [
     archetypeId: ROMAN_ARCHETYPE_IDS.fieldCentury,
     count: ROMAN_INFANTRY_STRENGTH,
     campaignRole: "Heavy infantry",
-    campaignTrait: "Fresh levy",
     defaultSelected: false,
     companion: {
       id: "valeria",
@@ -130,7 +125,6 @@ export const ROMAN_FORMATIONS: readonly RomanFormationDefinition[] = [
     archetypeId: ROMAN_ARCHETYPE_IDS.armouredEquites,
     count: ROMAN_CAVALRY_STRENGTH,
     campaignRole: "Cavalry",
-    campaignTrait: "Flank charge",
     defaultSelected: true,
     companion: {
       id: "brennos",
@@ -152,7 +146,6 @@ export const ROMAN_FORMATIONS: readonly RomanFormationDefinition[] = [
     archetypeId: ROMAN_ARCHETYPE_IDS.sagittarii,
     count: ROMAN_ARCHER_STRENGTH,
     campaignRole: "Archers",
-    campaignTrait: "12 volleys",
     defaultSelected: true,
     companion: {
       id: "aelia",

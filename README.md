@@ -272,6 +272,7 @@ Press `D` to display block IDs, grid/projected coordinates, depth keys, formatio
 
 ## Known edge cases
 
+- War-council and sandbox cards show only what works in battle: strength, armour, speed, and real ranged weapons. Traits (Tortoise, Disciplined, Deep order, Flank charge), catalogue equipment such as plumbatae on infantry, and archetype specialities are removed until each has a battle rule.
 - Deliberately left out of the morale and strength rules until they are playtested: scaling melee damage by a block's remaining models and making volleys cause wavering instead of relying on casualties.
 - The TEST SCENARIO keeps the original demonstration map and its three Saxon formations, and deploys the Roman formations chosen for it. Its ballistarii fight as light infantry with their ranged weapon, because the grid battle has no separate artillery rules yet.
 - Charge continuation models a straight breakthrough, but offers no optional mid-charge stop prompt yet.

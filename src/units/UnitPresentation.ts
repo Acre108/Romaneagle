@@ -13,24 +13,8 @@ export function formatProfileHandling(profile: UnitArchetypeProfile): string {
     `${titleCase(profile.gameplay.movement.class)} speed`;
 }
 
-export function formatProfileEquipment(profile: UnitArchetypeProfile): string {
-  return profile.typicalEquipment.map(titleCase).join(" · ");
-}
-
-export function formatProfileSpeciality(profile: UnitArchetypeProfile): string {
-  const guard = profile.guardAura;
-  if (guard) return `Guards ${guard.targetTag} within ${guard.radius}`;
-  const damageBonus = profile.gameplay.damageBonuses[0];
-  if (damageBonus) {
-    return `+${Math.round((damageBonus.multiplier - 1) * 100)}% ` +
-      `${damageBonus.channel} vs ${damageBonus.targetTag}`;
-  }
-  if (profile.rangedWeapon?.chargeDisruptionSeconds) return "Breaks committed charges";
-  if (profile.rangedWeapon?.requiredFormation) {
-    return `Deploy in ${titleCase(profile.rangedWeapon.requiredFormation)} to fire`;
-  }
-  if (profile.formationModes?.some((mode) => mode.id === "wedge")) {
-    return "Line endurance · Wedge impact";
-  }
-  return profile.tacticalIdentity;
+/** Only weapons that fire in battle belong on a card. Other catalogue equipment has no grid-battle effect yet. */
+export function formatProfileRanged(profile: UnitArchetypeProfile): string | null {
+  const weapon = profile.rangedWeapon;
+  return weapon ? `${weapon.label} · ${weapon.maximumAmmunition} ${weapon.ammunitionLabel}` : null;
 }

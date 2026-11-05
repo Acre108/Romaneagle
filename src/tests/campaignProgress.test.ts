@@ -17,7 +17,7 @@ describe("campaign progress", () => {
     expect(parseCampaignProgress("not-json").completedMissions).toEqual([]);
   });
 
-  it("[key] completes a mission once and persists it", () => {
+  it("completes a mission once and persists it", () => {
     const values = new Map<string, string>();
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,

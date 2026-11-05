@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ROMAN_FORMATION_BY_ID } from "../scenario/Roster";
 import { mapTileAt } from "../gridBattle/model/battlefieldMap";
+import { scenarioFactoryForMission } from "../gridBattle/scenario/campaignScenario";
+import { createPrototypeGridScenario } from "../gridBattle/scenario/prototypeScenario";
+import { ROMAN_FORMATION_BY_ID } from "../scenario/Roster";
 import type { GameState } from "../gridBattle/model/types";
 import { formationModelCount } from "../gridBattle/model/unitStats";
 import { terrainBlocksVoluntaryMovement } from "../gridBattle/model/terrain";
-import { scenarioFactoryForMission } from "../gridBattle/scenario/campaignScenario";
 
 function expectLegalDeployment(state: GameState): void {
   const occupied = new Set<string>();
@@ -69,5 +70,21 @@ describe("campaign battlefield deployment", () => {
     expect(state.characters.aelia?.hostBlockId.startsWith("R-ARCH-b")).toBe(true);
     expectLegalDeployment(state);
     expect(JSON.stringify(create())).toBe(JSON.stringify(state));
+  });
+
+  it.each([
+    ["roman-1-hadrians-wall", { x: 0, y: 11 }, "fortress_wall"],
+    ["roman-2-blackwater-ford", { x: 0, y: 6 }, "river_deep"],
+    ["roman-3-raven-at-vindolanda", { x: 8, y: 4 }, "fortress_wall"],
+  ] as const)("builds %s on its own battlefield, the same every time", (missionId, position, terrain) => {
+    const first = scenarioFactoryForMission(missionId)();
+    expect(mapTileAt(first.battlefield, position)?.terrain).toBe(terrain);
+    expect(JSON.stringify(scenarioFactoryForMission(missionId)())).toBe(JSON.stringify(first));
+  });
+
+  it("gives the sandbox the prototype battlefield, with its ambush trigger", () => {
+    const sandbox = scenarioFactoryForMission("test-field-trials")();
+    expect(JSON.stringify(sandbox)).toBe(JSON.stringify(createPrototypeGridScenario()));
+    expect(sandbox.battlefield.triggers.some((trigger) => trigger.id === "eastern-road-ambush")).toBe(true);
   });
 });

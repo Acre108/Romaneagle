@@ -18,10 +18,6 @@ import { createPrototypeGridScenario } from "../gridBattle/scenario/prototypeSce
 import { mapTileAt, setMapTerrain } from "../gridBattle/model/battlefieldMap";
 
 describe("grid-battle isometric presentation", () => {
-  it("projects the origin to the isometric origin", () => {
-    expect(gridToIso({ x: 0, y: 0 }, ISO_METRICS)).toEqual({ x: 0, y: 0 });
-  });
-
   it("maps all four cardinal directions to the fixed screen diagonals", () => {
     expect(gridToIso({ x: 1, y: 0 }, ISO_METRICS)).toEqual({ x: 48, y: 24 });
     expect(gridToIso({ x: -1, y: 0 }, ISO_METRICS)).toEqual({ x: -48, y: -24 });

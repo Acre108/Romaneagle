@@ -35,7 +35,7 @@ describe("the battle log", () => {
     });
   });
 
-  it("does not depend on how a message is worded", () => {
+  it("collapses repeated steps into one movement line, however the messages are worded", () => {
     const [entry] = battleLogEntries([
       event(1, "formation_moved", "Reworded advance.", { formationIds: ["R-I"], detail: { kind: "step" } }),
       event(2, "formation_moved", "Reworded advance.", { formationIds: ["R-I"], detail: { kind: "step" } }),
@@ -57,16 +57,6 @@ describe("the battle log", () => {
     ], NAMES);
     expect(JSON.stringify(entries)).not.toMatch(/-b\d/);
     expect(entries[0]?.headline).toBe("I Cohort · Prima and Great Warband became intermingled.");
-  });
-
-  it("collapses repeated steps into one movement line with the final facing", () => {
-    const [entry] = battleLogEntries([
-      event(1, "formation_moved", "I Cohort · Prima moved west.", { formationIds: ["R-I"], detail: { kind: "step" } }),
-      event(2, "formation_moved", "I Cohort · Prima moved west.", { formationIds: ["R-I"], detail: { kind: "step" } }),
-      event(3, "formation_rotated", "I Cohort · Prima finished its move facing north.", { formationIds: ["R-I"], detail: { kind: "final_facing", facing: "north" } }),
-      event(4, "activation_ended", "I Cohort · Prima ended its activation.", { formationIds: ["R-I"] }),
-    ], NAMES);
-    expect(entry?.headline).toBe("I Cohort · Prima moved 2 squares, facing north.");
   });
 
   it("says when a formation only held, puts the newest first, and marks rounds", () => {

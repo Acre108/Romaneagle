@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapTileAt } from "../gridBattle/model/battlefieldMap";
 import { terrainBlocksVoluntaryMovement } from "../gridBattle/model/terrain";
-import { scenarioFactoryForMission } from "../gridBattle/scenario/campaignScenario";
-import { createPrototypeGridScenario } from "../gridBattle/scenario/prototypeScenario";
 import {
   createVindolandaBattlefieldMap,
   createVindolandaScenario,
@@ -53,13 +51,4 @@ describe("Vindolanda mission battlefield", () => {
       state.blocks[id]!.position.y >= 9)).toBe(true);
   });
 
-  it("routes Mission Three to Vindolanda while leaving TEST SCENARIO on the prototype", () => {
-    const first = scenarioFactoryForMission("roman-3-raven-at-vindolanda")();
-    const reset = scenarioFactoryForMission("roman-3-raven-at-vindolanda")();
-    const testMission = scenarioFactoryForMission("test-field-trials")();
-
-    expect(JSON.stringify(first)).toBe(JSON.stringify(reset));
-    expect(mapTileAt(first.battlefield, { x: 8, y: 4 })?.terrain).toBe("fortress_wall");
-    expect(JSON.stringify(testMission)).toBe(JSON.stringify(createPrototypeGridScenario()));
-  });
 });

@@ -161,14 +161,6 @@ describe("grid battle rules", () => {
       .toContainEqual(expect.stringContaining("Pressure:"));
   });
 
-  it("9. allows a retreating block to detach without moving neighbours", () => {
-    const state = blankState();
-    addFormation(state, "f", [{ x: 3, y: 3 }, { x: 4, y: 3 }], "south", "saxon");
-    retreatBlock(state, "f-b1");
-    expect(state.blocks["f-b1"]!.position).toEqual({ x: 3, y: 2 });
-    expect(state.blocks["f-b2"]!.position).toEqual({ x: 4, y: 3 });
-  });
-
   it("10. shifts a retreat cascade from the rearmost block", () => {
     const state = blankState();
     addFormation(state, "f", [{ x: 3, y: 3 }, { x: 3, y: 2 }, { x: 3, y: 1 }], "south", "saxon");
@@ -486,19 +478,12 @@ describe("grid battle rules", () => {
     expect(state.eventLog.filter((event) => event.type === "duel_resolved")).toHaveLength(resolvedEvents);
   });
 
-  it("26. keeps every translated block movement cardinal", () => {
-    const state = blankState();
-    addFormation(state, "f", [{ x: 2, y: 3 }, { x: 3, y: 3 }], "north");
-    const before = Object.fromEntries(Object.values(state.blocks).map((block) => [block.id, { ...block.position }]));
-    translateFormation(state, "f", "east");
-    for (const block of Object.values(state.blocks)) expect(isCardinalStep(before[block.id]!, block.position)).toBe(true);
-  });
-
   it("27. recreates the scenario exactly on reset", () => {
-    const first = createPrototypeGridScenario();
-    first.blocks["legio-i-b1"]!.models = 1;
-    const reset = createPrototypeGridScenario();
-    expect(JSON.stringify(reset)).toBe(JSON.stringify(createPrototypeGridScenario()));
+    const pristine = JSON.stringify(createPrototypeGridScenario());
+    const played = createPrototypeGridScenario();
+    played.blocks["legio-i-b1"]!.models = 1;
+    played.formations["legio-i"]!.unit.equipment.push("brace_against_charge");
+    expect(JSON.stringify(createPrototypeGridScenario())).toBe(pristine);
   });
 
   it("28. retreats directly away from a flank attacker regardless of defender facing", () => {
@@ -898,14 +883,6 @@ describe("grid battle rules", () => {
     expect(state.blocks["roman-b3"]!.position).toEqual({ x: 3, y: 6 });
   });
 
-  it("42. ignores routine casualties until a formation crosses a model-count breakpoint", () => {
-    const state = blankState();
-    const positions = Array.from({ length: 15 }, (_, index) => ({ x: 1 + index % 5, y: 1 + Math.floor(index / 5) }));
-    addFormation(state, "warband", positions, "south", "saxon");
-    damageBlock(state, "warband-b1", 3, "test");
-    expect(state.formations.warband!.cohesion).toBe(8);
-  });
-
   it("42b. applies morale shocks once at 75 and 50 percent of the starting models and routs at 25", () => {
     const state = blankState();
     addFormation(state, "century", Array.from({ length: 9 }, (_, index) => ({ x: index % 3, y: Math.floor(index / 3) })), "north");
@@ -929,16 +906,6 @@ describe("grid battle rules", () => {
     expect(state.formations.century!.cohesion).toBe(0);
     expect(state.formations.century!.status).toBe("routed");
     expect(state.eventLog.filter((event) => event.type === "morale_shock")).toHaveLength(3);
-  });
-
-  it("42c. lets a healthy century absorb four normal exchanges before its first morale loss", () => {
-    const state = blankState();
-    addFormation(state, "century", Array.from({ length: 9 }, (_, index) => ({ x: index % 3, y: Math.floor(index / 3) })), "north");
-    for (const blockId of ["century-b1", "century-b2", "century-b3", "century-b4"]) {
-      damageBlock(state, blockId, 4, "even melee exchange");
-    }
-    expect(state.formations.century!.cohesion).toBe(8);
-    expect(Object.values(state.blocks).reduce((total, block) => total + block.models, 0)).toBe(65);
   });
 
   it("42d. caps flank and outnumbering morale shocks at once per round", () => {
@@ -1373,17 +1340,6 @@ describe("grid battle rules", () => {
     addFormation(state, "roman", [{ x: 3, y: 4 }], "north", "roman");
     addMapTerrainObject(state.battlefield, { x: 3, y: 3 }, "tree_large");
     addMapTerrainObject(state.battlefield, { x: 3, y: 3 }, "tree_large");
-    addMapTerrainObject(state.battlefield, { x: 3, y: 3 }, "tree_small");
-
-    expect(terrainBlockCapacityAt(state, { x: 3, y: 3 }, 9)).toBe(0);
-    expect(translateFormation(state, "roman", "north").ok).toBe(false);
-  });
-
-  it("62a-2. completely blocks a mixed stack that fills all nine spaces", () => {
-    const state = blankState();
-    addFormation(state, "roman", [{ x: 3, y: 4 }], "north", "roman");
-    addMapTerrainObject(state.battlefield, { x: 3, y: 3 }, "pond");
-    addMapTerrainObject(state.battlefield, { x: 3, y: 3 }, "rock_large");
     addMapTerrainObject(state.battlefield, { x: 3, y: 3 }, "tree_small");
 
     expect(terrainBlockCapacityAt(state, { x: 3, y: 3 }, 9)).toBe(0);

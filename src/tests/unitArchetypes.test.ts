@@ -11,7 +11,7 @@ import {
 } from "../units/UnitPresentation";
 
 describe("unit archetype catalog", () => {
-  it("[key] defines the complete Roman faction roster with unique IDs", () => {
+  it("defines the complete Roman faction roster with unique IDs", () => {
     expect(ROMAN_UNIT_ARCHETYPES).toHaveLength(11);
     expect(new Set(ROMAN_UNIT_ARCHETYPES.map((profile) => profile.id)).size).toBe(11);
     expect(ROMAN_UNIT_ARCHETYPES.map((profile) => profile.name)).toEqual([
@@ -47,7 +47,7 @@ describe("unit archetype catalog", () => {
       .toBe(UNIT_ARCHETYPES.length);
   });
 
-  it("[key] gives every archetype what the grid battle and its cards read", () => {
+  it("gives every archetype what the grid battle and its cards read", () => {
     for (const profile of UNIT_ARCHETYPES) {
       expect(profile.startingMorale).toBeGreaterThan(0);
       expect(profile.defaultStrength).toBeGreaterThan(0);
@@ -56,7 +56,7 @@ describe("unit archetype catalog", () => {
     }
   });
 
-  it("[key] keeps shields and armour classes where the battle reads them", () => {
+  it("keeps shields and armour classes where the battle reads them", () => {
     const field = getUnitArchetype(ROMAN_ARCHETYPE_IDS.fieldCentury);
     const sagittarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.sagittarii);
 
@@ -65,7 +65,7 @@ describe("unit archetype catalog", () => {
     expect(sagittarii.armourClass).not.toBe("heavy");
   });
 
-  it("[key] derives card and HUD copy from the archetype profile", () => {
+  it("derives card and HUD copy from the archetype profile", () => {
     const lanciarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.lanciarii);
     const ballistarii = getUnitArchetype(ROMAN_ARCHETYPE_IDS.ballistariiDetachment);
 
@@ -76,7 +76,7 @@ describe("unit archetype catalog", () => {
     expect(formatProfileRanged(ballistarii)).toContain("salvos");
   });
 
-  it("[key] defines valid weapon profiles for current and planned ranged units", () => {
+  it("defines valid weapon profiles for current and planned ranged units", () => {
     const rangedRomans = [
       ROMAN_ARCHETYPE_IDS.auxiliaryCohortDetachment,
       ROMAN_ARCHETYPE_IDS.sagittarii,

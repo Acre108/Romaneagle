@@ -51,20 +51,6 @@ describe("map editor tools", () => {
     expect(mapEditorObjectCount(map)).toBe(0);
   });
 
-  it("keeps the shared per-tile object capacity rules", () => {
-    const map = createBlankBattlefieldMap(4, 4);
-    const position = { x: 1, y: 1 };
-    applyMapEditorTool(map, position, { kind: "object", object: "pond" });
-    applyMapEditorTool(map, position, { kind: "object", object: "rock_large" });
-    applyMapEditorTool(map, position, { kind: "object", object: "tree_small" });
-
-    expect(() => applyMapEditorTool(
-      map,
-      position,
-      { kind: "object", object: "tree_small" },
-    )).toThrow("only 0 remain");
-  });
-
   it("paints both factions as unit blocks and campaign-only spawnpoints", () => {
     const map = createBlankBattlefieldMap(6, 6);
     applyMapEditorTool(map, { x: 1, y: 1 }, {

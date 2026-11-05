@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapTileAt } from "../gridBattle/model/battlefieldMap";
 import { terrainBlocksVoluntaryMovement } from "../gridBattle/model/terrain";
-import { scenarioFactoryForMission } from "../gridBattle/scenario/campaignScenario";
 import {
   createHadriansWallBattlefieldMap,
   createHadriansWallScenario,
@@ -45,13 +44,4 @@ describe("Hadrian's Wall mission battlefield", () => {
       state.blocks[id]!.position.y < 4)).toBe(true);
   });
 
-  it("routes only Mission One to the new scenario and remains deterministic", () => {
-    const first = scenarioFactoryForMission("roman-1-hadrians-wall")();
-    const reset = scenarioFactoryForMission("roman-1-hadrians-wall")();
-    const missionTwo = scenarioFactoryForMission("roman-2-blackwater-ford")();
-
-    expect(JSON.stringify(first)).toBe(JSON.stringify(reset));
-    expect(mapTileAt(first.battlefield, { x: 9, y: 11 })?.terrain).toBe("road");
-    expect(mapTileAt(missionTwo.battlefield, { x: 0, y: 11 })?.terrain).not.toBe("fortress_wall");
-  });
 });

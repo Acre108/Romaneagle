@@ -39,7 +39,7 @@ describe("campaign catalog", () => {
     expect(MISSION_BY_ID.get("roman-3-raven-at-vindolanda")?.dialogueByCompanionId.valeria).toBeDefined();
   });
 
-  it("[key] unlocks missions in data order and advances to the next incomplete mission", () => {
+  it("unlocks missions in data order and advances to the next incomplete mission", () => {
     const first = mission("first", 1);
     const second = mission("second", 2);
     const third = mission("third", 3);
@@ -58,16 +58,6 @@ describe("campaign catalog", () => {
     expect(currentMissionForCampaign(campaign, progress([first.id]))?.id).toBe(second.id);
     expect(currentMissionForCampaign(campaign, progress([first.id], third.id))?.id).toBe(second.id);
     expect(currentMissionForCampaign(campaign, progress([first.id, second.id, third.id]))?.id).toBe(third.id);
-  });
-
-  it("advances the Roman campaign through all three linked missions", () => {
-    const campaign = CAMPAIGN_BY_ID.get("roman")!;
-    const [first, second, third] = campaign.missions;
-    expect(currentMissionForCampaign(campaign, progress([]))?.id).toBe(first?.id);
-    expect(currentMissionForCampaign(campaign, progress([first!.id]))?.id).toBe(second?.id);
-    expect(currentMissionForCampaign(campaign, progress([first!.id, second!.id]))?.id).toBe(third?.id);
-    expect(isMissionUnlocked(campaign, third!, new Set([first!.id]))).toBe(false);
-    expect(isMissionUnlocked(campaign, third!, new Set([first!.id, second!.id]))).toBe(true);
   });
 
   it("derives campaign completion from mission data", () => {

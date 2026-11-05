@@ -56,10 +56,6 @@ describe("engaged orders", () => {
     expect(state.formations.romans?.hasActivated).toBe(false);
   });
 
-  it("refuses Brace while engaged", () => {
-    expect(executeCommand(engagedState(), { type: "brace" }).accepted).toBe(false);
-  });
-
   it("still lets a free formation Hold", () => {
     const state = blankState(8, 6);
     addFormation(state, "romans", [{ x: 1, y: 2 }], "east", "roman");
@@ -81,21 +77,22 @@ describe("planning and execution agree on who may give an order", () => {
     return state;
   }
 
-  it("refuses a charge from an engaged formation in both", () => {
-    const state = engagedWithEnemyInLane();
-    const charge = { type: "charge", attackerId: "romans-b3", defenderId: "lane-b1" } as const;
-
-    expect(planOrder(state, charge).ok).toBe(false);
-    expect(executeCommand(state, charge, { confirmed: true }).accepted).toBe(false);
-    expect(state.blocks["romans-b3"]?.position).toEqual({ x: 5, y: 2 });
-  });
-
-  it("refuses a reform from an engaged formation in both", () => {
-    const state = engagedWithEnemyInLane();
-    const reform = { type: "reform", blockId: "romans-b3", destination: { x: 6, y: 2 } } as const;
-
-    expect(planOrder(state, reform).ok).toBe(false);
-    expect(executeCommand(state, reform).accepted).toBe(false);
+  it("refuses every order a formation in contact cannot give, in both", () => {
+    const orders = [
+      { type: "brace" },
+      { type: "charge", attackerId: "romans-b3", defenderId: "lane-b1" },
+      { type: "reform", blockId: "romans-b3", destination: { x: 6, y: 2 } },
+      { type: "transfer_character", characterId: "none", targetBlockId: "romans-b2" },
+      { type: "merge", otherFormationId: "romans" },
+    ] as const;
+    for (const order of orders) {
+      const state = engagedWithEnemyInLane();
+      expect(planOrder(state, order).reason).toContain("Engaged formations");
+      expect(executeCommand(state, order, { confirmed: true }).reason).toContain("Engaged formations");
+    }
+    const unmoved = engagedWithEnemyInLane();
+    executeCommand(unmoved, orders[1], { confirmed: true });
+    expect(unmoved.blocks["romans-b3"]?.position).toEqual({ x: 5, y: 2 });
   });
 
   it("gives the same reason from both", () => {

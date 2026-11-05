@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { mapTileAt } from "../gridBattle/model/battlefieldMap";
 import { terrainBlocksVoluntaryMovement } from "../gridBattle/model/terrain";
-import { scenarioFactoryForMission } from "../gridBattle/scenario/campaignScenario";
 import {
   createBlackwaterFordBattlefieldMap,
   createBlackwaterFordScenario,
 } from "../gridBattle/scenario/blackwaterFordScenario";
-import { createPrototypeGridScenario } from "../gridBattle/scenario/prototypeScenario";
 
 describe("Blackwater Ford mission battlefield", () => {
   it("authors a broad river, three-file ford, horse crossing, banks, and woodland", () => {
@@ -48,14 +46,4 @@ describe("Blackwater Ford mission battlefield", () => {
       state.blocks[id]!.position.x === 17)).toBe(true);
   });
 
-  it("routes Mission Two to the ford while preserving the prototype as the test mission", () => {
-    const first = scenarioFactoryForMission("roman-2-blackwater-ford")();
-    const reset = scenarioFactoryForMission("roman-2-blackwater-ford")();
-    const testMission = scenarioFactoryForMission("test-field-trials")();
-
-    expect(JSON.stringify(first)).toBe(JSON.stringify(reset));
-    expect(mapTileAt(first.battlefield, { x: 0, y: 6 })?.terrain).toBe("river_deep");
-    expect(JSON.stringify(testMission)).toBe(JSON.stringify(createPrototypeGridScenario()));
-    expect(testMission.battlefield.triggers.some((trigger) => trigger.id === "eastern-road-ambush")).toBe(true);
-  });
 });

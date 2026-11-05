@@ -66,8 +66,8 @@ let lastBattleReport: BattleReport | undefined;
 let cutsceneStep = 0;
 let cutsceneSpeakers: string[] = [];
 let launchTimer: number | undefined;
-let testScenarioActive = false;
-let customMapBattleActive = false;
+/** Which screen a finished battle returns to. */
+let battleMode: "campaign" | "sandbox" | "custom" = "campaign";
 let mapEditor: MapEditor | undefined;
 
 function missionFormationDefinitions(mission: MissionDefinition): RomanFormationDefinition[] {
@@ -134,7 +134,7 @@ function renderCampaignSelection(): void {
 }
 
 function openTestScenario(): void {
-  testScenarioActive = true;
+  battleMode = "sandbox";
   activeCampaign = undefined;
   activeMission = TEST_SCENARIO_MISSION;
   activeFormations = [];
@@ -398,7 +398,7 @@ function resultRow(formation: BattleFormationResult): HTMLElement {
 
 function handleBattleEnded(report: BattleReport, persistProgress = true): void {
   if (!activeMission) return;
-  if (testScenarioActive) {
+  if (battleMode === "sandbox") {
     lastBattleReport = report;
     const returnButton = requiredElement<HTMLButtonElement>("return-from-battle");
     returnButton.hidden = false;
@@ -502,8 +502,8 @@ function returnToCampaignPhase(): void {
   requiredElement("victory-debrief").hidden = true;
   requiredElement("post-battle-cutscene").hidden = true;
   requiredElement<HTMLButtonElement>("return-from-battle").hidden = true;
-  if (customMapBattleActive) {
-    customMapBattleActive = false;
+  if (battleMode === "custom") {
+    battleMode = "campaign";
     activeCampaign = undefined;
     activeMission = undefined;
     requiredElement("campaign-select").hidden = false;
@@ -512,7 +512,7 @@ function returnToCampaignPhase(): void {
     renderCampaignSelection();
     return;
   }
-  if (testScenarioActive) {
+  if (battleMode === "sandbox") {
     activeMission = TEST_SCENARIO_MISSION;
     renderTestScenario();
     setBattleCopy(TEST_SCENARIO_MISSION);
@@ -544,8 +544,7 @@ function openCampaign(campaignId: string): void {
   if (!campaign?.available) return;
   const mission = currentMissionForCampaign(campaign, campaignProgress);
   if (!mission) return;
-  testScenarioActive = false;
-  customMapBattleActive = false;
+  battleMode = "campaign";
   renderCampaignPhase(campaign, mission);
   requiredElement("campaign-select").hidden = true;
   requiredElement("campaign-screen").hidden = false;
@@ -557,7 +556,7 @@ function launchBattle(
   selectedUnitIds: readonly string[],
 ): void {
   if (launchTimer !== undefined) return;
-  customMapBattleActive = false;
+  if (battleMode === "custom") battleMode = "campaign";
   deployedUnitIds = [...selectedUnitIds];
   activeMission = mission;
   setBattleCopy(mission);
@@ -587,8 +586,7 @@ function launchCustomMapBattle(
   }
 
   game?.stop();
-  testScenarioActive = false;
-  customMapBattleActive = true;
+  battleMode = "custom";
   activeCampaign = undefined;
   activeMission = undefined;
   requiredElement("saved-map-browser").hidden = true;
@@ -746,7 +744,7 @@ function bindEvents(): void {
     listenerOptions,
   );
   requiredElement<HTMLButtonElement>("leave-test-scenario").addEventListener("click", () => {
-    testScenarioActive = false;
+    battleMode = "campaign";
     activeMission = undefined;
     requiredElement("test-scenario-screen").hidden = true;
     requiredElement("campaign-select").hidden = false;
@@ -824,7 +822,7 @@ function bindEvents(): void {
   }, listenerOptions);
   document.querySelector<HTMLAnchorElement>(".campaign-brand")?.addEventListener("click", (event) => {
     event.preventDefault();
-    testScenarioActive = false;
+    battleMode = "campaign";
     requiredElement("campaign-screen").hidden = true;
     requiredElement("campaign-select").hidden = false;
     renderCampaignSelection();

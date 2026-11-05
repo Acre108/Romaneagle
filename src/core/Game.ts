@@ -38,34 +38,61 @@ function reportState(ratio: number): UnitState {
   return "steady";
 }
 
-export class Game {
+/** Starts and stops one battle's controller. Subclasses say which battle, and what its end looks like. */
+abstract class BattleSession {
   private controller: GridBattleController | null = null;
-  private stopped = false;
+  protected stopped = false;
 
+  protected launch(controller: GridBattleController, failureLog: string, failureHelp: string): void {
+    this.stopped = false;
+    this.controller = controller;
+    void controller.start().catch((error: unknown) => {
+      console.error(failureLog, error);
+      const help = document.getElementById("grid-action-help");
+      if (help) help.textContent = failureHelp;
+    });
+  }
+
+  protected showBattleResult(title: string, detail: string): void {
+    const titleElement = document.getElementById("battle-result-title");
+    const detailElement = document.getElementById("battle-result-detail");
+    const resultElement = document.getElementById("battle-result");
+    if (titleElement) titleElement.textContent = title;
+    if (detailElement) detailElement.textContent = detail;
+    if (resultElement) resultElement.hidden = false;
+  }
+
+  stop(): void {
+    this.stopped = true;
+    this.controller?.stop();
+    this.controller = null;
+  }
+}
+
+export class Game extends BattleSession {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly mission: MissionDefinition,
     private readonly selectedRomanUnitIds: readonly string[],
     private readonly onBattleEnded?: (report: BattleReport) => void,
-  ) {}
+  ) {
+    super();
+  }
 
   start(): void {
-    this.stopped = false;
-    const controller = new GridBattleController(
-      this.canvas,
-      (conclusion) => this.handleConclusion(conclusion),
-      scenarioFactoryForMission(this.mission.id, this.selectedRomanUnitIds),
-      "saxon",
-      objectiveDefinitionForMission(this.mission.id, this.selectedRomanUnitIds),
-      this.mission.campaignId === "test",
-      this.mission.battle.enemyLabel,
+    this.launch(
+      new GridBattleController(
+        this.canvas,
+        (conclusion) => this.handleConclusion(conclusion),
+        scenarioFactoryForMission(this.mission.id, this.selectedRomanUnitIds),
+        "saxon",
+        objectiveDefinitionForMission(this.mission.id, this.selectedRomanUnitIds),
+        this.mission.campaignId === "test",
+        this.mission.battle.enemyLabel,
+      ),
+      "Unable to initialise the PixiJS grid battle",
+      "The battlefield renderer could not start. Check WebGL support and reload.",
     );
-    this.controller = controller;
-    void controller.start().catch((error: unknown) => {
-      console.error("Unable to initialise the PixiJS grid battle", error);
-      const help = document.getElementById("grid-action-help");
-      if (help) help.textContent = "The battlefield renderer could not start. Check WebGL support and reload.";
-    });
   }
 
   private handleConclusion(conclusion: GridBattleConclusion): void {
@@ -75,12 +102,7 @@ export class Game {
       : conclusion.outcome === "saxonVictory" ? battleCopy.defeatTitle : battleCopy.mutualTitle;
     const detail = conclusion.outcome === "romanVictory" ? battleCopy.victoryDetail
       : conclusion.outcome === "saxonVictory" ? battleCopy.defeatDetail : battleCopy.mutualDetail;
-    const titleElement = document.getElementById("battle-result-title");
-    const detailElement = document.getElementById("battle-result-detail");
-    const resultElement = document.getElementById("battle-result");
-    if (titleElement) titleElement.textContent = title;
-    if (detailElement) detailElement.textContent = detail;
-    if (resultElement) resultElement.hidden = false;
+    this.showBattleResult(title, detail);
 
     const ratio = conclusion.romanMaximumStrength > 0
       ? conclusion.romanStrength / conclusion.romanMaximumStrength
@@ -108,39 +130,30 @@ export class Game {
     });
   }
 
-  stop(): void {
-    this.stopped = true;
-    this.controller?.stop();
-    this.controller = null;
-  }
 }
 
-export class CustomMapGame {
-  private controller: GridBattleController | null = null;
-  private stopped = false;
-
+export class CustomMapGame extends BattleSession {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly map: BattlefieldMap,
     private readonly mapName: string,
-  ) {}
+  ) {
+    super();
+  }
 
   start(): void {
-    this.stopped = false;
-    const controller = new GridBattleController(
-      this.canvas,
-      (conclusion) => this.handleConclusion(conclusion),
-      () => createCustomMapScenario(this.map),
-      "saxon",
-      eliminateAllEnemiesObjective(),
-      true,
+    this.launch(
+      new GridBattleController(
+        this.canvas,
+        (conclusion) => this.handleConclusion(conclusion),
+        () => createCustomMapScenario(this.map),
+        "saxon",
+        eliminateAllEnemiesObjective(),
+        true,
+      ),
+      "Unable to initialise the custom PixiJS grid battle",
+      "The custom battlefield could not start. Check the map deployments and reload.",
     );
-    this.controller = controller;
-    void controller.start().catch((error: unknown) => {
-      console.error("Unable to initialise the custom PixiJS grid battle", error);
-      const help = document.getElementById("grid-action-help");
-      if (help) help.textContent = "The custom battlefield could not start. Check the map deployments and reload.";
-    });
   }
 
   private handleConclusion(conclusion: GridBattleConclusion): void {
@@ -152,23 +165,12 @@ export class CustomMapGame {
       : conclusion.outcome === "saxonVictory"
         ? `The Roman force on ${this.mapName} has been defeated.`
         : `Neither force remains effective on ${this.mapName}.`;
-    const titleElement = document.getElementById("battle-result-title");
-    const detailElement = document.getElementById("battle-result-detail");
-    const resultElement = document.getElementById("battle-result");
+    this.showBattleResult(title, detail);
     const returnButton = document.getElementById("return-from-battle") as HTMLButtonElement | null;
-    if (titleElement) titleElement.textContent = title;
-    if (detailElement) detailElement.textContent = detail;
-    if (resultElement) resultElement.hidden = false;
     if (returnButton) {
       returnButton.hidden = false;
       returnButton.querySelector("span")!.textContent = "RETURN TO MAPS";
       returnButton.querySelector("small")!.textContent = "Back to campaign selection";
     }
-  }
-
-  stop(): void {
-    this.stopped = true;
-    this.controller?.stop();
-    this.controller = null;
   }
 }

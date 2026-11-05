@@ -153,7 +153,8 @@ Morale losses are charged per order, not per file, so frontage cannot multiply t
 | Pushed or scattered (once per order) | -2 |
 | Flanked / attacked from the rear (once per round) | -2 / -3 |
 | Outnumbered 1.25 to 1 or worse (once per round) | -1 |
-| Falling to 75%, 50%, 25% of starting models | -2, -2, -3 |
+| Falling to 75%, 50% of starting models | -2, -2 |
+| Falling to 25% of starting models | Routs outright |
 | A neighbouring formation routs | -1 |
 | Most lost in one order, apart from a leader's death | -5 |
 | Leader lost | -3 |
@@ -176,7 +177,7 @@ maximum = 4 damage per attacking block
 
 The Defence roll is derived deterministically from the round and the two block identities, so identical resets remain exactly reproducible. If the attack is not evaded, Armour, frontal shield Armour, and Brace Armour reduce its damage. Damage is then applied to HP; a model disappears only when its HP is exhausted, with partial wounds retained on the block.
 
-One model is one visible person. Model size controls how much formation space it consumes, and larger models carry more HP so that any full block has about 9-10 HP: close-order infantry 9 models at 1 HP, open-order infantry 5 at 2, cavalry 3 at 3. A blow therefore costs any block a similar share of its strength. A block shoved by an attack does not counterattack; a block killed by it still strikes back. Each lost model removes one soldier mark.
+One model is one visible person. Model size controls how much formation space it consumes, and larger models carry more HP so that any full block has about 9-10 HP: close-order infantry 9 models at 1 HP, open-order infantry 5 at 2, cavalry 3 at 3. A blow therefore costs any block a similar share of its strength. A block cleanly shoved by Battle does not counterattack; a block shoved by Press still does, and a block killed by either strikes back. Each lost model removes one soldier mark.
 
 ### Ranged combat
 
@@ -192,7 +193,7 @@ A formation is engaged whenever one of its blocks is orthogonally adjacent to an
 
 - **Fall back:** reverse the complete formation one square without changing facing.
 - **Battle:** every block in contact fights one adjacent enemy at full damage, but only shoves on a clear win, net pressure 4 or more. A lagging file may dress up to the formation's existing foremost rank; if that movement creates a new contact, the arriving block immediately fights its own pressure exchange. Steady blocks directly behind follow to keep the file intact. A file already on the front rank does not pursue beyond it.
-- **Press:** every contacting block receives +2 pressure and deals 1 less damage for that activation, shoves at net pressure 2 or more, and advances into any enemy square it forces open. When a front block advances, each steady block directly behind it follows forward one square, shifting the complete file. A wavering block stops the follow movement for itself and every block behind it.
+- **Press:** every contacting block receives +2 pressure and deals 1 less damage for that activation, shoves at net pressure 2 or more, and advances into any enemy square it forces open. When a front block advances, each steady block directly behind it follows forward one square, shifting the complete file. A wavering block stops the follow movement for itself and every block behind it. Blocks that advance stay wavering through the formation's next activation, so pressing twice in a row leaves the line easier to shove and lets files detach; a different order settles it.
 
 Battle and Press preview every participating contact together before they resolve. The overlay includes both factions: possible holds, retreats, removals, formation refills, and Press file advances are marked with `?`.
 

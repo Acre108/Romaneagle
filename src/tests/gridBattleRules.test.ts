@@ -919,7 +919,7 @@ describe("grid battle rules", () => {
     expect(state.formations.warband!.cohesion).toBe(8);
   });
 
-  it("42b. applies morale shocks once at 75, 50, and 25 percent of the starting models", () => {
+  it("42b. applies morale shocks once at 75 and 50 percent of the starting models and routs at 25", () => {
     const state = blankState();
     addFormation(state, "century", Array.from({ length: 9 }, (_, index) => ({ x: index % 3, y: Math.floor(index / 3) })), "north");
 
@@ -939,8 +939,8 @@ describe("grid battle rules", () => {
     damageBlock(state, "century-b5", 3, "test");
     damageBlock(state, "century-b6", 9, "test");
     damageBlock(state, "century-b7", 9, "test");
-    expect(state.formations.century!.cohesion).toBe(1);
-    expect(state.formations.century!.casualtyMoraleStage).toBe(3);
+    expect(state.formations.century!.cohesion).toBe(0);
+    expect(state.formations.century!.status).toBe("routed");
     expect(state.eventLog.filter((event) => event.type === "morale_shock")).toHaveLength(3);
   });
 

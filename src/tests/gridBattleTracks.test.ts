@@ -4,11 +4,11 @@ import { planOrder } from "../gridBattle/commands/planOrder";
 import { planAiActivation } from "../gridBattle/ai/formationAi";
 import { formationPlates } from "../gridBattle/rules/formationPlates";
 import { hitPointsPerModel } from "../gridBattle/model/unitStats";
-import { attackingPressure, pressurePreview, retreatBlock } from "../gridBattle/rules/combat";
+import { attackingPressure, damageBlock, pressurePreview, retreatBlock } from "../gridBattle/rules/combat";
 import { resolveEngagedOrder } from "../gridBattle/rules/engagement";
 import { resolveRoutingFormationActivation } from "../gridBattle/rules/routing";
 import { endFormationActivation } from "../gridBattle/rules/turnSystem";
-import { addFormation, blankState } from "./gridBattleTestState";
+import { addFormation, attachCharacter, blankState } from "./gridBattleTestState";
 import type { Formation, GameState, GridPosition, UnitType } from "../gridBattle/model/types";
 
 /**
@@ -193,18 +193,68 @@ describe("what an order pays by angle of attack", () => {
   });
 });
 
-describe("matched formations replying to each other", () => {
-  function matched(): GameState {
-    const state = blankState(30, 30);
-    const south = addFormation(state, "south", rectangle(12, 15, 4, 3), "north", "roman");
-    const north = addFormation(state, "north", rectangle(12, 12, 4, 3), "south", "saxon");
-    for (const formation of [south, north]) {
-      formation.unit.unitType = "heavy_infantry";
-      formation.unit.armour = 1;
-    }
-    return state;
+function matched(): GameState {
+  const state = blankState(30, 30);
+  const south = addFormation(state, "south", rectangle(12, 15, 4, 3), "north", "roman");
+  const north = addFormation(state, "north", rectangle(12, 12, 4, 3), "south", "saxon");
+  for (const formation of [south, north]) {
+    formation.unit.unitType = "heavy_infantry";
+    formation.unit.armour = 1;
   }
+  return state;
+}
 
+describe("pressing overextends a formation", () => {
+  function pressThenEndActivation(state: GameState): void {
+    resolveEngagedOrder(state, "south", "press");
+    state.activeFactionId = "roman";
+    endFormationActivation(state, "south");
+  }
+  const southWavering = (state: GameState) => Object.values(state.blocks)
+    .filter((block) => block.formationId === "south" && block.wavering).length;
+
+  it("leaves blocks that advanced wavering after the Press ends", () => {
+    const state = matched();
+    pressThenEndActivation(state);
+    expect(southWavering(state)).toBe(12);
+  });
+
+  it("does not overextend a Press that shoved nothing", () => {
+    const state = matched();
+    for (const id of ["north-b9", "north-b10", "north-b11", "north-b12"]) {
+      attachCharacter(state, `anchor-${id}`, id, "saxon", "commander", { resistanceBonus: 99, commandRadius: 0 });
+    }
+    pressThenEndActivation(state);
+    expect(southWavering(state)).toBe(0);
+  });
+
+  it("lets an order that does not press settle the line again", () => {
+    const state = matched();
+    pressThenEndActivation(state);
+    state.round += 1;
+    state.activeFactionId = "roman";
+    state.formations.south!.hasActivated = false;
+    endFormationActivation(state, "south");
+    expect(southWavering(state)).toBe(0);
+  });
+
+  it("makes a second Press in a row leave files behind", () => {
+    const state = matched();
+    pressThenEndActivation(state);
+    resolveEngagedOrder(state, "south", "press");
+    const ys = Object.values(state.blocks).filter((block) => block.factionId === "roman").map((block) => block.position.y);
+    expect(Math.max(...ys) - Math.min(...ys) + 1).toBeGreaterThan(3);
+  });
+
+  it("has the computer stop pressing once it is overextended", () => {
+    const state = matched();
+    state.activeFactionId = "saxon";
+    for (const id of state.formations.north!.blockIds) state.blocks[id]!.wavering = true;
+    expect(planAiActivation(state, "saxon")?.intent).toBe("battle");
+  });
+});
+
+describe("matched formations replying to each other", () => {
   it("lets a shoved formation shove straight back", () => {
     const state = matched();
     resolveEngagedOrder(state, "south", "press");
@@ -230,16 +280,43 @@ describe("strength follows the shove", () => {
     expect(hitPointsPerModel("open", 3) * 3).toBe(9);
   });
 
-  it("stops a shoved block from counterattacking", () => {
-    const state = matchup(PRIMA, GREAT_WARBAND, "rear");
+  it("stops a block counterattacking a clean Battle shove", () => {
+    const state = matchup(PRIMA, LOOSE_WARBAND, "rear");
     const attackers = modelsOf(state, "roman");
-    state.formations.attacker!.unit.attack = 9;
-    state.formations.defender!.unit.attack = 9;
-    state.blocks["defender-b2"]!.characterId = null;
-    resolveEngagedOrder(state, "attacker", "press");
-    expect(state.eventLog.filter((event) => event.type === "pressure_applied").length).toBeGreaterThan(0);
+    resolveEngagedOrder(state, "attacker", "battle");
+    expect(state.formations.defender!.cohesion).toBeLessThan(LOOSE_WARBAND.morale);
     expect(state.eventLog.some((event) => event.type === "counterattack_resolved")).toBe(false);
     expect(modelsOf(state, "roman")).toBe(attackers);
+  });
+
+  it("lets a shoved block counter a Press", () => {
+    const state = matchup(PRIMA, LOOSE_WARBAND, "rear");
+    resolveEngagedOrder(state, "attacker", "press");
+    expect(state.eventLog.some((event) => event.type === "counterattack_resolved")).toBe(true);
+  });
+
+  it("routs a formation on casualties alone at a quarter of its men, whatever its morale", () => {
+    const state = matchup(PRIMA, GREAT_WARBAND, "front");
+    state.formations.defender!.cohesion = 10;
+    const ids = [...state.formations.defender!.blockIds];
+    for (const id of ids.slice(0, 11)) damageBlock(state, id, 9, "test");
+    expect(state.formations.defender!.status).not.toBe("routed");
+    damageBlock(state, ids[11]!, 9, "test");
+    expect(state.formations.defender!.status).toBe("routed");
+    expect(state.eventLog.some((event) => event.message.includes("and broke"))).toBe(true);
+  });
+
+  it("ends a long frontal Battle in a rout rather than mutual annihilation", () => {
+    const state = matched();
+    let routed = false;
+    for (let round = 1; round <= 20 && !routed; round += 1) {
+      state.round = round;
+      resolveEngagedOrder(state, "south", "battle");
+      if (state.formations.north) resolveEngagedOrder(state, "north", "battle");
+      routed = Object.values(state.formations).some((formation) => formation.status === "routed");
+    }
+    expect(routed).toBe(true);
+    expect(modelsOf(state, "roman")).toBeGreaterThanOrEqual(15);
   });
 
   it("counts a counterattack in damage, so tough models do not lose extra strength", () => {

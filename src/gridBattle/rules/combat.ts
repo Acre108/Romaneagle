@@ -569,6 +569,15 @@ function applyCasualtyThresholds(state: GameState, formationId: string | null): 
   const currentModels = family.reduce((total, formation) => total + formationModels(state, formation), 0);
   const previousStage = Math.max(...family.map((formation) => formation.casualtyMoraleStage));
   const remainingRatio = initialModels > 0 ? currentModels / initialModels : 0;
+  if (remainingRatio <= BALANCE.casualtyRoutRemainingRatio && !family.some((formation) => formation.status === "routed")) {
+    const name = family[0]!.name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
+    applyMoraleLoss(state, formationId, Math.max(...family.map((formation) => formation.cohesion)));
+    emitEvent(state, "morale_shock", `${name} fell to ${Math.round(BALANCE.casualtyRoutRemainingRatio * 100)}% of its models and broke.`, {
+      blockIds: family.flatMap((formation) => formation.blockIds),
+      formationIds: family.map((formation) => formation.id),
+    });
+    return;
+  }
   let nextStage = previousStage;
   let moraleLoss = 0;
   for (let index = previousStage; index < BALANCE.casualtyMoraleThresholds.length; index += 1) {

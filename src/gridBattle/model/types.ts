@@ -96,6 +96,8 @@ export interface TroopBlock {
   modelCapacity: number;
   wounds: number;
   wavering: boolean;
+  /** Advanced on a Press this activation, so it stays wavering through the next one. */
+  overextended?: boolean;
   characterId: string | null;
   hasRetreatedThisRound: boolean;
   isContested: boolean;

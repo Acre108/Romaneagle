@@ -34,12 +34,14 @@ export function canSelectFormation(state: GameState, formationId: string): boole
     && !provisionalFormationFamily(state, formationId).some((candidate) => candidate.hasActivated));
 }
 
-/** Wavering lasts through a formation's next activation; blocks still cut off waver again at once. */
+/** Wavering lasts through a formation's next activation. Blocks that just pressed forward, or are still cut off, stay wavering. */
 function steadyFormationFamily(state: GameState, formationId: string): void {
   for (const formation of provisionalFormationFamily(state, formationId)) {
     for (const blockId of formation.blockIds) {
       const block = state.blocks[blockId];
-      if (block) block.wavering = false;
+      if (!block) continue;
+      block.wavering = Boolean(block.overextended);
+      delete block.overextended;
     }
     recalculateFormationConnectivity(state, formation.id);
   }

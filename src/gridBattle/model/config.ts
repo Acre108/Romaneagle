@@ -41,8 +41,9 @@ export const BALANCE = {
   casualtyMoraleThresholds: [
     { remainingRatio: 0.75, moraleLoss: 2 },
     { remainingRatio: 0.5, moraleLoss: 2 },
-    { remainingRatio: 0.25, moraleLoss: 3 },
   ],
+  /** A formation reduced to this share of its starting models routs, whatever its morale. */
+  casualtyRoutRemainingRatio: 0.25,
   sideFlankMoraleLoss: 2,
   rearFlankMoraleLoss: 3,
   outnumberedRatio: 1.25,

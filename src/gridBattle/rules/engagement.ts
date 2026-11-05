@@ -453,8 +453,8 @@ function resolveEngagedContacts(
     const result = resolvePressure(state, contact.attackerId, contact.defenderId, options);
     if (!result.ok) return false;
     resolved += 1;
-    const shovedAndSurvived = Boolean(state.blocks[defender.id]) && (result.vacated || result.compressed);
-    if (counter && !shovedAndSurvived) {
+    const cleanBattleShove = order === "battle" && Boolean(state.blocks[defender.id]) && (result.vacated || result.compressed);
+    if (counter && !cleanBattleShove) {
       counteredDefenders.add(defender.id);
       counterattacks += 1;
       emitEvent(
@@ -486,6 +486,8 @@ function resolveEngagedContacts(
       if (attackerFormation && (order === "press" || dressesBattleLine)) {
         for (const movedId of advanceCombatFile(state, attackerFormation, contact.attackerId, attackerOrigin, defenderOrigin)) {
           movementExclusions.add(movedId);
+          const moved = state.blocks[movedId];
+          if (order === "press" && moved) moved.overextended = true;
         }
       }
     }

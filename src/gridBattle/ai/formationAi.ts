@@ -174,7 +174,8 @@ function engagedOrder(state: GameState, formation: Formation): "battle" | "press
   const canForceRetreat = previews.some((preview) =>
     preview.netPressure < BALANCE.battlePushPressureThreshold
     && preview.netPressure + BALANCE.pressPressureBonus >= BALANCE.pushPressureThreshold);
-  return formation.cohesion > BALANCE.breakingMoraleThreshold && canForceRetreat ? "press" : "battle";
+  const alreadyOverextended = previews.some((preview) => state.blocks[preview.attackerId]?.wavering);
+  return formation.cohesion > BALANCE.breakingMoraleThreshold && canForceRetreat && !alreadyOverextended ? "press" : "battle";
 }
 
 /** A formation with nothing to its front spends its activation turning toward the most contacts. */

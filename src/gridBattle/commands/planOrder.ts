@@ -139,7 +139,7 @@ function planEngagedCombat(
     kind: "combat",
     title: `Confirm ${command.type}`,
     detail: command.type === "press"
-      ? "Highlighted tiles show combat-dependent retreats, removals, and files that may advance. ! is certain; ? is possible. Hover for percentages."
+      ? "Blocks that advance stay wavering through your next activation. Enemy blocks still counter. ! is certain; ? is possible. Hover for percentages."
       : "Highlighted tiles show contacts, retreats, removals, refills, and gap-closing blocks. ! is certain; ? is possible. Hover for percentages.",
     tiles: outcomePreview.tiles,
     damage: outcomePreview.damage,

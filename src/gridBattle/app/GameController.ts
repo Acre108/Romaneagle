@@ -458,7 +458,7 @@ export class GridBattleController {
       fall_back: "Reverse one square and leave contact if the rear is clear.",
       turn: "Choose a new facing. Turning in contact uses this formation's whole activation.",
       battle: "Fight every contact at full damage. Shoves only on a clear win, net pressure 4 or more; blocks closing a gap fight immediately.",
-      press: "Gain +2 pressure but deal 1 less damage. Shoves at net pressure 2 or more; steady files advance into space the enemy gives up.",
+      press: "Gain +2 pressure but deal 1 less damage and still take counters. Shoves at net pressure 2 or more; files that advance stay wavering through your next activation.",
     };
     requiredElement("grid-action-help").textContent = help[action];
     if (action === "shoot") this.renderRangedPreview(null);

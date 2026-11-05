@@ -27,6 +27,14 @@ export function projectMapFileName(name: string): string {
   return `${stem}.json`;
 }
 
+/** The chosen name belongs to a different saved map; replacing it needs the author's say-so. */
+export class ProjectMapConflictError extends Error {
+  constructor(readonly fileName: string, message: string) {
+    super(message);
+    this.name = "ProjectMapConflictError";
+  }
+}
+
 async function responseJson<T>(response: Response): Promise<T> {
   if (!response.headers.get("Content-Type")?.includes("application/json")) {
     throw new Error("Project map storage is unavailable in this static build.");
@@ -51,12 +59,18 @@ export async function loadProjectMap(fileName: string): Promise<BattlefieldMap> 
 export async function saveProjectMap(
   name: string,
   map: BattlefieldMap,
+  overwrite = false,
 ): Promise<ProjectMapSaveResponse> {
   const fileName = projectMapFileName(name);
-  const response = await fetch(`${MAP_API_PATH}/${encodeURIComponent(fileName)}`, {
+  const query = overwrite ? "?overwrite=true" : "";
+  const response = await fetch(`${MAP_API_PATH}/${encodeURIComponent(fileName)}${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(serializeBattlefieldMap(map)),
   });
+  if (response.status === 409) {
+    const { error } = await response.json() as { error?: string };
+    throw new ProjectMapConflictError(fileName, error ?? `A saved map named ${fileName} already exists.`);
+  }
   return responseJson<ProjectMapSaveResponse>(response);
 }

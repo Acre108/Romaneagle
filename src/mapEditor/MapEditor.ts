@@ -48,7 +48,7 @@ import {
   getUnitArchetype,
   type UnitArchetypeId,
 } from "../units/UnitArchetypes";
-import { projectMapFileName, saveProjectMap } from "./MapStorage";
+import { ProjectMapConflictError, projectMapFileName, saveProjectMap } from "./MapStorage";
 
 export const MINIMUM_EDITOR_MAP_SIZE = 4;
 export const MAXIMUM_EDITOR_MAP_SIZE = 64;
@@ -233,8 +233,13 @@ export class MapEditor {
   private readonly buildingWidthInput: HTMLInputElement;
   private readonly buildingDepthInput: HTMLInputElement;
   private readonly mapNameInput: HTMLInputElement;
+  private readonly saveStateReadout: HTMLElement;
   private readonly resizeObserver: ResizeObserver;
+  private readonly windowEvents = new AbortController();
   private map = createBlankBattlefieldMap(16, 12);
+  /** The map revision that was last written out, and the project file this map belongs to. */
+  private savedRevision = 0;
+  private savedFileName: string | null = null;
   private tool: MapEditorTool = { kind: "ground-texture", terrain: "clear", texture: "grass" };
   private groundTextureCategory: GroundTerrainType | null = null;
   private unitFaction: FactionId = "roman";
@@ -267,6 +272,7 @@ export class MapEditor {
     this.buildingWidthInput = requiredDescendant(root, "#map-editor-building-width");
     this.buildingDepthInput = requiredDescendant(root, "#map-editor-building-depth");
     this.mapNameInput = requiredDescendant(root, "#map-editor-name");
+    this.saveStateReadout = requiredDescendant(root, "#map-editor-save-state");
     this.createPalettes();
     this.bindEvents();
     this.resizeObserver = new ResizeObserver(() => this.render());
@@ -279,8 +285,20 @@ export class MapEditor {
     this.canvas.focus({ preventScroll: true });
   }
 
-  loadMap(map: BattlefieldMap, name: string): void {
+  /** Asks before throwing away edits. Returns whether the caller may replace the current map. */
+  confirmDiscardChanges(): boolean {
+    return !this.hasUnsavedChanges()
+      || window.confirm("This map has unsaved changes that will be lost. Continue?");
+  }
+
+  private hasUnsavedChanges(): boolean {
+    return this.map.revision !== this.savedRevision;
+  }
+
+  loadMap(map: BattlefieldMap, name: string, fileName: string): void {
     this.map = map;
+    this.savedRevision = map.revision;
+    this.savedFileName = fileName;
     this.mapNameInput.value = name;
     this.widthInput.value = String(map.width);
     this.heightInput.value = String(map.height);
@@ -290,6 +308,7 @@ export class MapEditor {
   }
 
   destroy(): void {
+    this.windowEvents.abort();
     this.resizeObserver.disconnect();
   }
 
@@ -565,6 +584,9 @@ export class MapEditor {
       "click",
       (event) => void this.saveMapToProject(event.currentTarget as HTMLButtonElement),
     );
+    window.addEventListener("beforeunload", (event) => {
+      if (this.hasUnsavedChanges()) event.preventDefault();
+    }, { signal: this.windowEvents.signal });
     this.canvas.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
     this.canvas.addEventListener("pointermove", (event) => this.handlePointerMove(event));
     this.canvas.addEventListener("pointerup", (event) => this.handlePointerUp(event));
@@ -617,8 +639,10 @@ export class MapEditor {
   private createBlankMap(): void {
     const width = this.editorDimension(this.widthInput, "width");
     const height = this.editorDimension(this.heightInput, "height");
-    if (width === null || height === null) return;
+    if (width === null || height === null || !this.confirmDiscardChanges()) return;
     this.map = createBlankBattlefieldMap(width, height);
+    this.savedRevision = this.map.revision;
+    this.savedFileName = null;
     this.hoveredTile = null;
     this.hoveredEdge = null;
     this.updateInterface(`Created a blank ${width} × ${height} battlefield.`);
@@ -743,7 +767,14 @@ export class MapEditor {
     ));
     this.formationReadout.textContent = String(this.map.deployments.length);
     this.spawnReadout.textContent = String(this.map.spawnPoints.length);
+    this.saveStateReadout.textContent = this.saveStateLabel();
     this.render();
+  }
+
+  private saveStateLabel(): string {
+    if (this.hasUnsavedChanges()) return "Unsaved changes";
+    if (this.savedFileName) return "Saved";
+    return this.map.revision > 0 ? "Downloaded" : "Blank map";
   }
 
   private render(): void {
@@ -1426,21 +1457,46 @@ export class MapEditor {
     anchor.download = projectMapFileName(this.mapNameInput.value);
     anchor.click();
     URL.revokeObjectURL(url);
+    this.savedRevision = this.map.revision;
     this.updateInterface(`Exported ${anchor.download}.`);
   }
 
   private async saveMapToProject(button: HTMLButtonElement): Promise<void> {
     button.disabled = true;
     this.updateInterface("Saving map to the project…");
+    // Edits made while the request is in flight must still count as unsaved.
+    const map = this.map;
+    const revision = map.revision;
+    const name = this.mapNameInput.value;
     try {
-      const saved = await saveProjectMap(this.mapNameInput.value, this.map);
-      this.mapNameInput.value = saved.fileName.slice(0, -".json".length);
+      // Saving over the file this map came from is routine; any other existing file needs a yes.
+      const saved = await this.writeMap(name, map);
+      if (!saved) {
+        this.updateInterface("Not saved. Choose a different map name, or save again to replace it.");
+        return;
+      }
+      if (this.map === map) {
+        this.savedRevision = revision;
+        this.savedFileName = saved.fileName;
+        this.mapNameInput.value = saved.fileName.slice(0, -".json".length);
+      }
       this.updateInterface(`Saved to ${saved.path}.`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "The map could not be saved.";
       this.updateInterface(`${detail} Use Download map JSON when running a static build.`);
     } finally {
       button.disabled = false;
+    }
+  }
+
+  private async writeMap(name: string, map: BattlefieldMap): Promise<Awaited<ReturnType<typeof saveProjectMap>> | null> {
+    const isOwnFile = projectMapFileName(name) === this.savedFileName;
+    try {
+      return await saveProjectMap(name, map, isOwnFile);
+    } catch (error) {
+      if (!(error instanceof ProjectMapConflictError)) throw error;
+      if (!window.confirm(`${error.message} Replace it with this map?`)) return null;
+      return saveProjectMap(name, map, true);
     }
   }
 }

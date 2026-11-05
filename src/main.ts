@@ -643,12 +643,12 @@ function previewVictoryFlow(): void {
   }, false);
 }
 
-function showMapEditor(map?: Awaited<ReturnType<typeof loadProjectMap>>, name?: string): void {
+function showMapEditor(map?: Awaited<ReturnType<typeof loadProjectMap>>, name?: string, fileName?: string): void {
   requiredElement("saved-map-browser").hidden = true;
   requiredElement("campaign-select").hidden = true;
   requiredElement("map-editor-screen").hidden = false;
   mapEditor ??= new MapEditor(requiredElement("map-editor-screen"));
-  if (map && name) mapEditor.loadMap(map, name);
+  if (map && name && fileName) mapEditor.loadMap(map, name, fileName);
   else mapEditor.refresh();
 }
 
@@ -726,11 +726,12 @@ function bindEvents(): void {
     const name = card?.dataset.mapName;
     const action = actionButton?.dataset.mapAction;
     if (!actionButton || !fileName || !name || !action) return;
+    if (action !== "battle" && mapEditor && !mapEditor.confirmDiscardChanges()) return;
     actionButton.disabled = true;
     requiredElement("saved-map-browser-status").textContent = `Loading ${fileName}…`;
     void loadProjectMap(fileName).then((map) => {
       if (action === "battle") launchCustomMapBattle(map, name);
-      else showMapEditor(map, name);
+      else showMapEditor(map, name, fileName);
     }).catch((error: unknown) => {
       actionButton.disabled = false;
       requiredElement("saved-map-browser-status").textContent = error instanceof Error

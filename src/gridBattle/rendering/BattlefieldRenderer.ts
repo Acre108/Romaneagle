@@ -1,4 +1,4 @@
-import { AccessibilitySystem, Application, Assets, Container, Graphics, Matrix, Point, Rectangle, Sprite, Text, type Texture } from "pixi.js";
+import { AccessibilitySystem, Application, Assets, Container, Graphics, Matrix, Point, Sprite, Text, type Texture } from "pixi.js";
 import romanCenturySoldierUrl from "../../../Art/Roman/Roman Century Soldier.png";
 import basicSaxonInfantryUrl from "../../../Art/Saxon/Basic Saxon Infantry.png";
 import detailedSaxonInfantryUrl from "../../../Art/Saxon/Detailed Saxon Infantry.png";
@@ -32,20 +32,19 @@ import {
   type BlockSlotMask,
   type ContestedBlockSlotOccupancy,
 } from "../model/blockSlots";
-import { attackingPressure, defendingResistance } from "../rules/combat";
-import { chargePreview } from "../rules/charge";
 import { addPosition, directionVector, oppositeDirection } from "../rules/direction";
-import { legalReformDestinations } from "../rules/formationActions";
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
-import { legalMoveDirections, planFormationMove } from "../rules/movement";
-import { componentIndexForBlock } from "../rules/splitting";
 import { canSelectFormation } from "../rules/turnSystem";
 import { blockFacing } from "../rules/blockFacing";
 import { formationPlates } from "../rules/formationPlates";
 import { isCavalry } from "../model/unitStats";
-import { rangedAttackPreview } from "../rules/rangedCombat";
 import { edgeFeatureDefinition } from "../model/edgeFeatureDefinitions";
+import { drawActionPreviews } from "./actionPreviews";
 import { AnimationQueue, type AnimationSpeed } from "./AnimationQueue";
+import { drawFallenBody, drawSkullIcon } from "./casualtyArt";
+import { debugReadoutText, drawAxes, drawDebugCandidates, drawDebugLabels } from "./debugOverlay";
+import { drawMinimap } from "./minimap";
+import { OrderPreviewOverlay, type BoardView } from "./orderPreviewOverlay";
 import { drawEdgeFeatureShape, drawGroundTextureDetails, drawTerrainObject, interpolatePoint } from "./terrainArt";
 import {
   BLOCK_SLOT_POINTS,
@@ -61,8 +60,6 @@ import {
   ISO_METRICS,
   ISO_VIEW_HEIGHT,
   ISO_VIEW_WIDTH,
-  MAX_CAMERA_ZOOM,
-  MIN_CAMERA_ZOOM,
 } from "./isometric/IsoConfig";
 import { calculateIsoBoundaryDepth, calculateIsoDepth, ISO_DEPTH_PRIORITY } from "./isometric/IsoDepth";
 import { isoPickCandidates, pickElevatedIsoTile } from "./isometric/IsoPicking";
@@ -102,21 +99,6 @@ interface BlockMotion {
   durationMs: number;
   visuals: VisualAnchor[];
   destroyOnComplete?: boolean;
-}
-
-interface PreviewMathHitArea {
-  key: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-interface PreviewBubblePlacement {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 const FORMATION_COLOURS: Record<string, number> = {
@@ -179,13 +161,6 @@ function diamondAt(centre: ScreenPosition, scale = 1): number[] {
     centre.x, centre.y + ISO_METRICS.tileHeight * 0.5 * scale,
     centre.x - ISO_METRICS.tileWidth * 0.5 * scale, centre.y,
   ];
-}
-
-function previewBubblesOverlap(a: PreviewBubblePlacement, b: PreviewBubblePlacement, padding = 5): boolean {
-  return a.x < b.x + b.width + padding
-    && a.x + a.width + padding > b.x
-    && a.y < b.y + b.height + padding
-    && a.y + a.height + padding > b.y;
 }
 
 function boardBounds(
@@ -263,9 +238,12 @@ export class BattlefieldRenderer {
   private animationQueue: AnimationQueue | null = null;
   private animationSpeed: AnimationSpeed = 1;
   private pendingEvents: readonly GameEvent[] = [];
-  private orderPreview: OrderConfirmationPreview | null = null;
-  private expandedPreviewMathKey: string | null = null;
-  private readonly previewMathHitAreas: PreviewMathHitArea[] = [];
+  private readonly boardView: BoardView = {
+    projectTile: (position) => this.projectTile(position),
+    surfaceDiamond: (position, scale) => this.surfaceDiamond(position, scale),
+    hoveredCell: () => this.hoveredCell,
+  };
+  private readonly orderPreviewOverlay = new OrderPreviewOverlay(this.orderPreviewLayer, this.boardView);
   private readonly previousBlockPositions = new Map<string, GridPosition>();
   private readonly previousCharacterPositions = new Map<string, GridPosition>();
   private readonly blockVisuals = new Map<string, VisualAnchor[]>();
@@ -498,17 +476,11 @@ export class BattlefieldRenderer {
       return;
     }
     const local = this.worldContainer.toLocal(new Point(screen.x, screen.y));
-    const overPositionControl = this.previewMathHitAreas.some((area) => area.key.startsWith("position:")
-      && local.x >= area.x && local.x <= area.x + area.width
-      && local.y >= area.y && local.y <= area.y + area.height);
-    const picked = overPositionControl ? this.hoveredCell : this.pickAtScreen(screen);
+    const picked = this.orderPreviewOverlay.isOverPositionControl(local) ? this.hoveredCell : this.pickAtScreen(screen);
     if (!samePosition(picked, this.hoveredCell)) {
       this.hoveredCell = picked;
       this.callbacks.onCellHover(picked);
-      if (this.orderPreview) {
-        if (this.expandedPreviewMathKey?.startsWith("position:")) this.expandedPreviewMathKey = null;
-        this.redrawOrderPreview();
-      }
+      this.orderPreviewOverlay.handleHoverChanged();
     }
     this.renderDebugCandidates();
     this.updateDebugReadout();
@@ -520,11 +492,9 @@ export class BattlefieldRenderer {
     const moved = this.pointerStart ? Math.hypot(screen.x - this.pointerStart.x, screen.y - this.pointerStart.y) : 0;
     if (!this.isPanning && event.button === 0 && moved <= 4) {
       const local = this.worldContainer.toLocal(new Point(screen.x, screen.y));
-      const previewHit = [...this.previewMathHitAreas].reverse().find((area) =>
-        local.x >= area.x && local.x <= area.x + area.width
-        && local.y >= area.y && local.y <= area.y + area.height);
-      if (previewHit) {
-        this.togglePreviewMath(previewHit.key);
+      const previewControl = this.orderPreviewOverlay.controlAt(local);
+      if (previewControl) {
+        this.orderPreviewOverlay.toggleMath(previewControl);
       } else {
         const picked = this.pickAtScreen(screen);
         if (picked) this.callbacks.onCellTap(picked);
@@ -543,10 +513,7 @@ export class BattlefieldRenderer {
     this.hoveredCell = null;
     this.hoveredCandidates = [];
     this.callbacks.onCellHover(null);
-    if (this.orderPreview) {
-      if (this.expandedPreviewMathKey?.startsWith("position:")) this.expandedPreviewMathKey = null;
-      this.redrawOrderPreview();
-    }
+    this.orderPreviewOverlay.handleHoverChanged();
     this.renderDebugCandidates();
     this.updateDebugReadout();
   };
@@ -678,7 +645,7 @@ export class BattlefieldRenderer {
     this.blockVisuals.clear();
     this.characterVisuals.clear();
     this.motions.length = 0;
-    this.previewMathHitAreas.length = 0;
+    this.orderPreviewOverlay.clearHitAreas();
   }
 
   private registerBlockVisual(blockId: string, display: Container, position: GridPosition, priority: number): void {
@@ -1082,311 +1049,6 @@ export class BattlefieldRenderer {
     return drawEdgeFeatureShape(feature, definition, baseStart, baseEnd);
   }
 
-  private drawPreviewCell(position: GridPosition, colour: number, alpha = 0.3): void {
-    const graphic = new Graphics()
-      .poly(this.surfaceDiamond(position, 0.88), true)
-      .fill({ color: colour, alpha })
-      .stroke({ width: 3, color: colour, alpha: 0.95 });
-    graphic.eventMode = "none";
-    this.movementPreviewLayer.addChild(graphic);
-  }
-
-  private renderOrderConfirmationPreview(preview: OrderConfirmationPreview | null): void {
-    if (!preview) return;
-    const visibleTiles = preview.tiles.filter((tile) => tile.chance > 0);
-    for (const tile of visibleTiles) {
-      const centre = this.projectTile(tile.position);
-      const colour = tile.factionId === "roman" ? 0x73b4ef : 0xe0aa65;
-      const group = new Container({ label: `order-${tile.certainty}-${positionKey(tile.position)}` });
-      const shadow = new Graphics()
-        .poly(this.surfaceDiamond(tile.position, 0.78), true)
-        .fill({ color: 0x10130f, alpha: 0.52 })
-        .stroke({ width: 3, color: colour, alpha: tile.certainty === "certain" ? 0.9 : 0.65 });
-      const key = `position:${tile.factionId}:${positionKey(tile.position)}`;
-      const showPercentage = samePosition(tile.position, this.hoveredCell);
-      group.addChild(shadow);
-      if (showPercentage) {
-        const marker = this.createPreviewSpeechButton(
-          key,
-          `${tile.chance}%`,
-          `${tile.chance}% chance ${tile.blockId ?? "a block"} ends in ${String.fromCharCode(65 + tile.position.x)}${tile.position.y + 1}. Activate for calculation.`,
-          colour,
-          58,
-        );
-        marker.position.set(centre.x + (tile.factionId === "roman" ? -62 : 4), centre.y - 47);
-        this.previewMathHitAreas.push({ key, x: marker.x, y: marker.y, width: 58, height: 31 });
-        group.addChild(marker);
-      } else {
-        const marker = new Text({
-          text: tile.chance === 100 ? "!" : "?",
-          style: {
-            fontFamily: "Arial",
-            fontSize: 25,
-            fontWeight: "900",
-            fill: colour,
-            stroke: { color: 0x10130f, width: 4 },
-          },
-        });
-        marker.anchor.set(0.5);
-        marker.position.set(centre.x, centre.y - 7);
-        marker.eventMode = "none";
-        group.addChild(marker);
-      }
-      group.eventMode = "passive";
-      this.orderPreviewLayer.addChild(group);
-    }
-    const damagePlacements: PreviewBubblePlacement[] = [];
-    for (const damage of preview.damage) {
-      const centre = this.projectTile(damage.position);
-      const colour = damage.factionId === "roman" ? 0x73b4ef : 0xe0aa65;
-      const key = `damage:${damage.blockId}`;
-      const mitigationLabel = damage.mitigationLabel ?? "evade";
-      const damageText = damage.minimumDamage === damage.maximumDamage ? `${damage.maximumDamage} dmg` : `${damage.minimumDamage}–${damage.maximumDamage} dmg`;
-      const label = damage.evadeChance > 0 ? `${damageText}\n${damage.evadeChance}% ${mitigationLabel}` : damageText;
-      const group = new Container({ label: `damage-${damage.blockId}` });
-      const bubble = this.createPreviewSpeechButton(
-        key,
-        label,
-        `${damage.blockId} takes ${damage.minimumDamage} to ${damage.maximumDamage} damage with ${damage.evadeChance}% ${mitigationLabel}. Activate for calculation.`,
-        colour,
-        78,
-      );
-      const direction = damage.factionId === "roman" ? -1 : 1;
-      const candidates = [
-        { x: direction * 22, y: 0 },
-        { x: direction * 66, y: -5 },
-        { x: direction * 22, y: -45 },
-        { x: direction * 110, y: -10 },
-        { x: direction * 66, y: -50 },
-        { x: direction * 22, y: -90 },
-        { x: direction * 154, y: -15 },
-        { x: direction * 110, y: -55 },
-      ];
-      let placement: PreviewBubblePlacement = {
-        x: centre.x - 39 + candidates[0]!.x,
-        y: centre.y - 105 + candidates[0]!.y,
-        width: 78,
-        height: 40,
-      };
-      for (const candidate of candidates) {
-        const next = {
-          x: centre.x - 39 + candidate.x,
-          y: centre.y - 105 + candidate.y,
-          width: 78,
-          height: 40,
-        };
-        placement = next;
-        if (!damagePlacements.some((placed) => previewBubblesOverlap(next, placed))) break;
-      }
-      while (damagePlacements.some((placed) => previewBubblesOverlap(placement, placed))) {
-        placement = { ...placement, x: placement.x + direction * 44, y: placement.y - 5 };
-      }
-      damagePlacements.push(placement);
-      bubble.position.set(placement.x, placement.y);
-      this.previewMathHitAreas.push({ key, x: bubble.x, y: bubble.y, width: 78, height: 40 });
-      group.addChild(bubble);
-      group.eventMode = "passive";
-      this.orderPreviewLayer.addChild(group);
-    }
-    const expandedTile = visibleTiles.find((tile) =>
-      `position:${tile.factionId}:${positionKey(tile.position)}` === this.expandedPreviewMathKey);
-    const expandedDamage = preview.damage.find((damage) => `damage:${damage.blockId}` === this.expandedPreviewMathKey);
-    if (expandedTile || expandedDamage) {
-      const item = expandedTile ?? expandedDamage!;
-      const centre = this.projectTile(item.position);
-      const colour = item.factionId === "roman" ? 0x73b4ef : 0xe0aa65;
-      const detail = new Container({ label: "expandedPreviewMath" });
-      this.addPreviewMathBubble(
-        detail,
-        centre.x - 155,
-        centre.y + (expandedTile ? 34 : -178),
-        item.math,
-        colour,
-      );
-      detail.eventMode = "none";
-      this.orderPreviewLayer.addChild(detail);
-    }
-  }
-
-  private createPreviewSpeechButton(
-    key: string,
-    label: string,
-    accessibleTitle: string,
-    colour: number,
-    width: number,
-  ): Container {
-    const height = label.includes("\n") ? 34 : 25;
-    const button = new Container({ label: key });
-    const background = new Graphics()
-      .roundRect(0, 0, width, height, 6)
-      .fill({ color: 0x151912, alpha: 0.96 })
-      .stroke({ width: 1.5, color: colour, alpha: 0.95 })
-      .poly([width / 2 - 5, height, width / 2 + 5, height, width / 2, height + 6], true)
-      .fill({ color: 0x151912, alpha: 0.96 })
-      .stroke({ width: 1, color: colour, alpha: 0.9 });
-    const text = new Text({
-      text: label,
-      style: { fontFamily: "Arial", fontSize: 10, fontWeight: "700", fill: 0xffedbd },
-    });
-    text.anchor.set(0, 0.5);
-    text.position.set(6, height / 2);
-    const info = new Graphics().circle(width - 10, height / 2, 6).fill(colour);
-    const infoText = new Text({
-      text: "i",
-      style: { fontFamily: "Arial", fontSize: 9, fontWeight: "900", fill: 0x151912 },
-    });
-    infoText.anchor.set(0.5);
-    infoText.position.set(width - 10, height / 2 - 0.5);
-    button.addChild(background, text, info, infoText);
-    button.eventMode = "static";
-    button.cursor = "pointer";
-    button.hitArea = new Rectangle(0, 0, width, height + 6);
-    button.accessible = true;
-    button.accessibleTitle = accessibleTitle;
-    button.accessibleHint = "Shows or hides the combat calculation.";
-    button.tabIndex = 0;
-    button.on("pointertap", (event) => {
-      const nativeType = (event.nativeEvent as Event | undefined)?.type ?? "";
-      if (nativeType.startsWith("pointer")) return;
-      event.stopPropagation();
-      this.togglePreviewMath(key);
-    });
-    return button;
-  }
-
-  private addPreviewMathBubble(
-    parent: Container,
-    x: number,
-    y: number,
-    lines: readonly string[],
-    colour: number,
-  ): void {
-    const width = 310;
-    const text = new Text({
-      text: lines.join("\n"),
-      style: {
-        fontFamily: "Arial",
-        fontSize: 12,
-        lineHeight: 17,
-        fill: 0xe8e1cf,
-        wordWrap: true,
-        wordWrapWidth: width - 16,
-      },
-    });
-    text.position.set(x + 8, y + 7);
-    const height = text.height + 14;
-    const background = new Graphics()
-      .roundRect(x, y, width, height, 6)
-      .fill({ color: 0x11150f, alpha: 0.98 })
-      .stroke({ width: 1.5, color: colour, alpha: 0.95 });
-    background.eventMode = "none";
-    text.eventMode = "none";
-    parent.addChild(background, text);
-  }
-
-  private redrawOrderPreview(): void {
-    this.orderPreviewLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
-    this.previewMathHitAreas.length = 0;
-    this.renderOrderConfirmationPreview(this.orderPreview);
-  }
-
-  private togglePreviewMath(key: string): void {
-    this.expandedPreviewMathKey = this.expandedPreviewMathKey === key ? null : key;
-    this.redrawOrderPreview();
-  }
-
-  private drawArrow(from: GridPosition, to: GridPosition, colour: number): void {
-    const start = this.projectTile(from);
-    const end = this.projectTile(to);
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const ux = dx / length;
-    const uy = dy / length;
-    const g = new Graphics()
-      .moveTo(start.x + ux * 18, start.y + uy * 9)
-      .lineTo(end.x - ux * 18, end.y - uy * 9)
-      .stroke({ width: 4, color: colour, alpha: 0.9 });
-    const tipX = end.x - ux * 14;
-    const tipY = end.y - uy * 7;
-    g.poly([
-      tipX, tipY,
-      tipX - ux * 10 - uy * 6, tipY - uy * 10 + ux * 6,
-      tipX - ux * 10 + uy * 6, tipY - uy * 10 - ux * 6,
-    ], true).fill(colour);
-    this.movementPreviewLayer.addChild(g);
-  }
-
-  private drawRangedParticipationPips(position: GridPosition, count: number): void {
-    const centre = this.projectTile(position);
-    const graphics = new Graphics();
-    const columns = Math.min(5, count);
-    for (let index = 0; index < count; index += 1) {
-      const row = Math.floor(index / 5);
-      const column = index % 5;
-      const rowColumns = row === Math.floor((count - 1) / 5) ? ((count - 1) % 5) + 1 : columns;
-      const x = (column - (rowColumns - 1) / 2) * 6;
-      const y = -13 - row * 6;
-      graphics.circle(centre.x + x, centre.y + y, 2.2)
-        .fill({ color: 0xffe69a, alpha: 0.96 })
-        .stroke({ width: 1, color: 0x493215, alpha: 0.9 });
-    }
-    this.movementPreviewLayer.addChild(graphics);
-  }
-
-  private renderPreviews(state: GameState): void {
-    const formation = state.selectedFormationId ? state.formations[state.selectedFormationId] : undefined;
-    if (!formation || !state.currentAction) return;
-    if (state.currentAction === "move") {
-      for (const direction of legalMoveDirections(state, formation.id)) {
-        const plan = planFormationMove(state, formation.id, direction).plan;
-        if (!plan) continue;
-        for (const relocation of plan.relocations) this.drawPreviewCell(relocation.destination, plan.reordered ? 0xd4a85e : 0x79b88e, plan.reordered ? 0.22 : 0.18);
-      }
-      return;
-    }
-    if (state.currentAction === "reform" && state.selectedBlockId) {
-      for (const position of legalReformDestinations(state, state.selectedBlockId)) this.drawPreviewCell(position, 0x7acb92, 0.38);
-      return;
-    }
-    if (state.currentAction === "shoot") {
-      const firingSourceIds = new Set<string>();
-      for (const defender of Object.values(state.blocks)) {
-        if (defender.factionId === formation.factionId) continue;
-        const preview = rangedAttackPreview(state, formation.id, defender.id);
-        if (!preview) continue;
-        const targetAlpha = 0.16 + preview.firingIntensity * 0.46;
-        this.drawPreviewCell(defender.position, 0xc56f5f, targetAlpha);
-        this.drawRangedParticipationPips(defender.position, preview.firingBlockCount);
-        for (const sourceBlockId of preview.sourceBlockIds) {
-          const source = state.blocks[sourceBlockId];
-          if (!source) continue;
-          firingSourceIds.add(source.id);
-        }
-      }
-      for (const sourceBlockId of firingSourceIds) {
-        const source = state.blocks[sourceBlockId];
-        if (source) this.drawPreviewCell(source.position, 0xe0c877, 0.18);
-      }
-      return;
-    }
-    for (const attackerId of formation.blockIds) {
-      const attacker = state.blocks[attackerId];
-      if (!attacker) continue;
-      for (const defender of Object.values(state.blocks)) {
-        if (state.currentAction === "charge") {
-          const preview = chargePreview(state, attackerId, defender.id);
-          if (!preview) continue;
-          const vector = directionVector(formation.facing);
-          for (let distance = 1; distance <= preview.distance; distance += 1) {
-            this.drawPreviewCell(addPosition(attacker.position, vector, distance), 0xe2a84d, 0.18 + distance * 0.025);
-          }
-          this.drawArrow(attacker.position, defender.position, 0xffbe55);
-        }
-      }
-    }
-  }
-
   private drawShadow(position: GridPosition, blockId: string): void {
     const centre = this.projectTile(position);
     const shadow = new Graphics()
@@ -1469,27 +1131,6 @@ export class BattlefieldRenderer {
     container.addChild(soldiers);
   }
 
-  private drawFallenBody(graphics: Graphics, x: number, y: number, angle: number): void {
-    const dx = Math.cos(angle);
-    const dy = Math.sin(angle) * 0.55;
-    const px = -dy;
-    const py = dx * 0.55;
-    const headX = x - dx * 5;
-    const headY = y - dy * 5;
-    const hipX = x + dx * 4;
-    const hipY = y + dy * 4;
-    graphics.ellipse(x, y + 2, 6.5, 2.4).fill({ color: 0x57161b, alpha: 0.52 })
-      .moveTo(headX + dx * 2, headY + dy * 2).lineTo(hipX, hipY)
-      .stroke({ width: 3.2, color: 0x35261f, cap: "round" })
-      .circle(headX, headY, 2.2)
-      .fill(0xb9a184)
-      .stroke({ width: 0.7, color: 0x30251e, alpha: 0.9 })
-      .moveTo(x - px * 3.5, y - py * 3.5).lineTo(x + px * 3.5, y + py * 3.5)
-      .moveTo(hipX, hipY).lineTo(hipX + dx * 3 + px * 2, hipY + dy * 3 + py * 2)
-      .moveTo(hipX, hipY).lineTo(hipX + dx * 3 - px * 2, hipY + dy * 3 - py * 2)
-      .stroke({ width: 1.5, color: 0x2b211c, cap: "round" });
-  }
-
   private renderCasualtyBodies(): void {
     for (const marker of this.casualtyBodyTiles.values()) {
       const centre = this.projectTile(marker.position);
@@ -1503,28 +1144,12 @@ export class BattlefieldRenderer {
       const visibleBodies = Math.min(marker.casualties, CASUALTY_BODY_OFFSETS.length);
       for (let index = 0; index < visibleBodies; index += 1) {
         const offset = CASUALTY_BODY_OFFSETS[index]!;
-        this.drawFallenBody(graphics, offset.x, offset.y, CASUALTY_BODY_ANGLES[index]!);
+        drawFallenBody(graphics, offset.x, offset.y, CASUALTY_BODY_ANGLES[index]!);
       }
       graphics.eventMode = "none";
       group.addChild(graphics);
       this.casualtyBodyLayer.addChild(group);
     }
-  }
-
-  private drawSkullIcon(graphics: Graphics, x: number, y: number): void {
-    graphics.circle(x, y, 6).fill({ color: 0xffedbd, alpha: 0.1 })
-      .circle(x, y, 4.1)
-      .fill(0xe9dfc5)
-      .stroke({ width: 0.9, color: 0x3a332a, alpha: 0.95 })
-      .roundRect(x - 2.6, y + 2, 5.2, 3.2, 1)
-      .fill(0xd6c9aa)
-      .stroke({ width: 0.7, color: 0x3a332a, alpha: 0.9 })
-      .circle(x - 1.45, y - 0.5, 0.9).fill(0x302a24)
-      .circle(x + 1.45, y - 0.5, 0.9).fill(0x302a24)
-      .poly([x, y + 0.2, x - 0.7, y + 1.4, x + 0.7, y + 1.4], true).fill(0x51483b)
-      .moveTo(x - 1.6, y + 3.4).lineTo(x + 1.6, y + 3.4)
-      .moveTo(x, y + 2.7).lineTo(x, y + 4.2)
-      .stroke({ width: 0.65, color: 0x746a59, alpha: 0.9 });
   }
 
   private renderCasualtySkulls(): void {
@@ -1542,7 +1167,7 @@ export class BattlefieldRenderer {
         const rowColumns = Math.min(columns, remaining);
         const x = (column - (rowColumns - 1) / 2) * 10;
         const y = -37 - row * 10 + (column % 2 === 0 ? -1 : 1);
-        this.drawSkullIcon(graphics, x, y);
+        drawSkullIcon(graphics, x, y);
       }
       graphics.eventMode = "none";
       group.addChild(graphics);
@@ -1822,154 +1447,55 @@ export class BattlefieldRenderer {
     }
   }
 
-  private renderDebugLabels(state: GameState): void {
-    if (!this.debugVisible) return;
-    for (const block of Object.values(state.blocks)) {
-      const iso = this.projectTile(block.position);
-      const component = block.formationId ? componentIndexForBlock(state, block.formationId, block.id) : -1;
-      const formation = block.formationId ? state.formations[block.formationId] : undefined;
-      const label = new Text({
-        text: `${block.position.x},${block.position.y} Â· z${calculateIsoDepth(block.position.x, block.position.y)}\n${block.id} Â· C${component}\nM${block.models} W${block.wavering ? 1 : 0} P${attackingPressure(state, block.id)} R${defendingResistance(state, block.id, formation?.facing ?? "north")}`,
-        style: { fontFamily: "Arial", fontSize: 7, fill: 0xffffff, stroke: { color: 0x000000, width: 2 }, align: "center" },
-      });
-      label.anchor.set(0.5, 1);
-      label.position.set(iso.x, iso.y - 42);
-      label.zIndex = calculateIsoDepth(block.position.x, block.position.y, ISO_DEPTH_PRIORITY.floatingLabel);
-      this.floatingTextLayer.addChild(label);
-    }
-  }
-
   private renderDebugCandidates(): void {
     this.debugLayer.removeChildren().forEach((child) => child.destroy());
-    if (!this.debugVisible) return;
-    const g = new Graphics();
-    for (const candidate of this.hoveredCandidates) {
-      if (!this.state || candidate.x < 0 || candidate.y < 0
-        || candidate.x >= this.state.battlefield.width || candidate.y >= this.state.battlefield.height) continue;
-      g.poly(this.surfaceDiamond(candidate, 0.76), true).stroke({ width: 1, color: 0x73b8e6, alpha: 0.62 });
-    }
-    if (this.hoveredCell) {
-      g.poly(this.surfaceDiamond(this.hoveredCell, 0.68), true)
-        .fill({ color: 0xffffff, alpha: 0.13 })
-        .stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
-    }
-    this.debugLayer.addChild(g);
+    if (this.debugVisible) drawDebugCandidates(this.debugLayer, this.boardView, this.state, this.hoveredCandidates);
   }
 
   private updateDebugReadout(): void {
     const readout = document.getElementById("grid-iso-debug-readout");
-    if (!readout) return;
-    const camera = this.camera.state;
-    const hovered = this.hoveredCell;
-    const projected = hovered ? this.projectTile(hovered) : null;
-    readout.textContent = [
-      `Camera ${camera.x.toFixed(1)}, ${camera.y.toFixed(1)} Â· zoom ${camera.zoom.toFixed(2)}`,
-      hovered ? `Picked ${hovered.x},${hovered.y} Â· iso ${projected!.x.toFixed(0)},${projected!.y.toFixed(0)} Â· depth ${calculateIsoDepth(hovered.x, hovered.y)}` : "Picked â€”",
-      `Candidates ${this.hoveredCandidates.map((position) => `${position.x},${position.y}`).join(" Â· ") || "â€”"}`,
-      this.lastLocalPointer ? `Local pointer ${this.lastLocalPointer.x.toFixed(1)}, ${this.lastLocalPointer.y.toFixed(1)}` : "Local pointer â€”",
-      `Zoom range ${MIN_CAMERA_ZOOM.toFixed(2)}â€“${MAX_CAMERA_ZOOM.toFixed(2)}`,
-    ].join("\n");
+    if (readout) readout.textContent = debugReadoutText(this.boardView, this.camera.state, this.hoveredCandidates, this.lastLocalPointer);
   }
 
   private renderAxes(): void {
     this.pixiUiLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
-    if (!this.axesVisible) return;
-    const group = new Container({ label: "isoAxes" });
-    group.position.set(92, 108);
-    const g = new Graphics().circle(0, 0, 4).fill(0xf1dfaa);
-    const labels: { direction: Direction; text: string }[] = [
-      { direction: "north", text: "N" }, { direction: "east", text: "E" },
-      { direction: "south", text: "S" }, { direction: "west", text: "W" },
-    ];
-    for (const item of labels) {
-      const vector = projectedDirection(item.direction, 0.75);
-      g.moveTo(0, 0).lineTo(vector.x, vector.y).stroke({ width: 3, color: 0xe3cd91, alpha: 0.92 });
-      const text = new Text({ text: item.text, style: { fontFamily: "Arial", fontSize: 12, fontWeight: "700", fill: 0xffedbd } });
-      text.anchor.set(0.5);
-      text.position.set(vector.x * 1.22, vector.y * 1.22);
-      group.addChild(text);
-    }
-    group.addChildAt(g, 0);
-    this.pixiUiLayer.addChild(group);
+    if (this.axesVisible) drawAxes(this.pixiUiLayer);
   }
 
   private renderMinimap(): void {
     if (!this.state || !this.minimap) return;
-    const context = this.minimap.getContext("2d");
-    if (!context) return;
-    const cellWidth = this.minimap.width / this.state.battlefield.width;
-    const cellHeight = this.minimap.height / this.state.battlefield.height;
-    context.clearRect(0, 0, this.minimap.width, this.minimap.height);
-    for (let y = 0; y < this.state.battlefield.height; y += 1) {
-      for (let x = 0; x < this.state.battlefield.width; x += 1) {
-        const terrain = terrainAt(this.state, { x, y })!;
-        const texture = terrain === "building" ? undefined : groundTextureAt(this.state, { x, y });
-        context.fillStyle = texture
-          ? groundTextureDefinition(texture).minimapColour
-          : terrainDefinition(terrain).minimapColour;
-        context.fillRect(x * cellWidth, y * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
-      }
-    }
-    for (const feature of this.state.battlefield.edgeFeatures) {
-      const definition = edgeFeatureDefinition(feature.type);
-      const left = feature.position.x * cellWidth;
-      const top = feature.position.y * cellHeight;
-      context.beginPath();
-      switch (feature.direction) {
-        case "north": context.moveTo(left, top); context.lineTo(left + cellWidth, top); break;
-        case "east": context.moveTo(left + cellWidth, top); context.lineTo(left + cellWidth, top + cellHeight); break;
-        case "south": context.moveTo(left, top + cellHeight); context.lineTo(left + cellWidth, top + cellHeight); break;
-        case "west": context.moveTo(left, top); context.lineTo(left, top + cellHeight); break;
-      }
-      context.strokeStyle = definition.minimapColour;
-      context.lineWidth = definition.height === "tall" ? 3 : 2;
-      context.stroke();
-    }
-    for (const block of Object.values(this.state.blocks)) {
-      context.fillStyle = this.moraleVisible
-        ? cssColour(moraleColour(this.state, block))
-        : block.factionId === "roman" ? "#cf4b58" : "#b08150";
-      context.fillRect(block.position.x * cellWidth + 1, block.position.y * cellHeight + 1, cellWidth - 2, cellHeight - 2);
-    }
+    const state = this.state;
     const corners = [
       { x: 0, y: 0 }, { x: this.app.screen.width, y: 0 },
       { x: this.app.screen.width, y: this.app.screen.height }, { x: 0, y: this.app.screen.height },
     ].map((screen) => isoToFractionalGrid(this.camera.screenToWorld(screen), ISO_METRICS));
-    context.beginPath();
-    corners.forEach((corner, index) => {
-      const x = (corner.x + 0.5) * cellWidth;
-      const y = (corner.y + 0.5) * cellHeight;
-      if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
-    });
-    context.closePath();
-    context.strokeStyle = "#ffe5a5";
-    context.lineWidth = 2;
-    context.stroke();
+    drawMinimap(this.minimap, state, (block) => (this.moraleVisible
+      ? cssColour(moraleColour(state, block))
+      : block.factionId === "roman" ? "#cf4b58" : "#b08150"), corners);
   }
 
-  render(state: GameState, orderPreview: OrderConfirmationPreview | null = this.orderPreview): void {
+  render(state: GameState, orderPreview: OrderConfirmationPreview | null = this.orderPreviewOverlay.current): void {
     if (this.state && this.state !== state) {
       this.casualtyBodyTiles.clear();
       this.casualtyTurnSkulls.clear();
     }
     this.state = state;
-    if (this.orderPreview !== orderPreview) this.expandedPreviewMathKey = null;
-    this.orderPreview = orderPreview;
+    this.orderPreviewOverlay.setPreview(orderPreview);
     this.renderTerrain(state);
     this.clearDynamicLayers();
-    if (!orderPreview) this.renderPreviews(state);
+    if (!orderPreview) drawActionPreviews(state, this.movementPreviewLayer, this.boardView);
     this.renderBlocks(state);
     this.renderCasualtyBodies();
     this.renderActivationPulses(state);
     this.renderCharacters(state);
     this.renderFormationPlates(state, orderPreview);
     this.renderCasualtySkulls();
-    this.renderOrderConfirmationPreview(orderPreview);
+    this.orderPreviewOverlay.draw();
     this.animateMovedBlocks(state);
     this.animateMovedCharacters(state);
     this.animateDepartingBlocks(state);
     this.pendingEvents = [];
-    this.renderDebugLabels(state);
+    if (this.debugVisible) drawDebugLabels(this.floatingTextLayer, this.boardView, state);
     this.renderDebugCandidates();
     this.renderMinimap();
     this.previousBlockPositions.clear();

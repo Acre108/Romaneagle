@@ -252,7 +252,7 @@ export function planFormationAdvance(
     relocationMovementCost(state, candidate, direction, relocations!),
   ]));
   if (options.spendMovement !== false && family.some((candidate) => candidate.movementRemaining < movementCosts[candidate.id]!)) {
-    return { ok: false, reason: `Requires ${Math.max(...Object.values(movementCosts))} movement.` };
+    return { ok: false, reason: `Not enough movement: that costs ${Math.max(...Object.values(movementCosts))}, with ${Math.min(...family.map((candidate) => candidate.movementRemaining))} left.` };
   }
   return {
     ok: true,

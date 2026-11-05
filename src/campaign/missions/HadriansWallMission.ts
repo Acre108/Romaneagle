@@ -17,7 +17,7 @@ export const HADRIANS_WALL_MISSION: MissionDefinition = {
   facts: [
     { label: "Terrain", value: "Hadrian's Wall · Open ground · Woods" },
     { label: "Weather", value: "Cold northern wind" },
-    { label: "Enemy", value: "5 Pict formations" },
+    { label: "Enemy", value: "3 Pict formations" },
   ],
   scoutReport: "“They are coming straight for the wall. Our archers hold the parapet, but the fighting will be decided on the ground beyond it.”",
   scoutAttribution: "— Lucius, explorator",
@@ -34,8 +34,8 @@ export const HADRIANS_WALL_MISSION: MissionDefinition = {
     minimum: 3,
     maximum: 3,
     fixed: true,
-    help: "Mission One deploys two infantry cohorts and the Equites. Wall archers fight independently.",
-    note: "Fixed force · Allied wall archers act independently.",
+    help: "Mission One deploys two infantry cohorts and the Equites. The allied wall archers join your command.",
+    note: "Fixed force · Allied wall archers join your command.",
   },
   map: {
     ariaLabel: "Tactical map north of Hadrian's Wall",

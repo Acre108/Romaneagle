@@ -1,5 +1,5 @@
 import { BALANCE } from "../model/config";
-import type { GameState, GridPosition } from "../model/types";
+import type { FactionId, Formation, GameState, GridPosition } from "../model/types";
 import { manhattanDistance } from "./direction";
 import { originalFormationId } from "./splitting";
 
@@ -9,10 +9,22 @@ export interface FormationPlate {
   key: string;
   text: string;
   tone: PlateTone;
+  factionId: FactionId;
   position: GridPosition;
 }
 
 const STEADY_MORALE_SHARE = 0.7;
+
+export function moraleTone(formation: Pick<Formation, "cohesion" | "maxCohesion" | "status">): PlateTone {
+  if (formation.status === "routed" || formation.cohesion <= BALANCE.breakingMoraleThreshold) return "breaking";
+  return formation.cohesion / Math.max(1, formation.maxCohesion) >= STEADY_MORALE_SHARE ? "steady" : "shaken";
+}
+
+export function moraleWord(formation: Pick<Formation, "cohesion" | "maxCohesion" | "status">): string {
+  if (formation.status === "routed") return "Routing";
+  const tone = moraleTone(formation);
+  return tone === "steady" ? "Steady" : tone === "shaken" ? "Shaken" : "Breaking";
+}
 
 function shortName(name: string): string {
   const withoutFragment = name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
@@ -42,14 +54,13 @@ export function formationPlates(state: GameState): FormationPlate[] {
     const men = blocks.reduce((total, block) => total + block.models, 0);
     const routed = members.some((formation) => formation.status === "routed");
     const morale = Math.max(...members.map((formation) => formation.cohesion));
-    const share = morale / Math.max(1, members[0]!.maxCohesion);
     plates.push({
       key,
       text: routed
         ? `${shortName(members[0]!.name)}  ROUTING  ${men}`
         : `${shortName(members[0]!.name)}  ♥${morale}  ${men}`,
-      tone: routed || morale <= BALANCE.breakingMoraleThreshold ? "breaking"
-        : share >= STEADY_MORALE_SHARE ? "steady" : "shaken",
+      tone: moraleTone({ cohesion: morale, maxCohesion: members[0]!.maxCohesion, status: routed ? "routed" : "formed" }),
+      factionId: members[0]!.factionId,
       position: { ...anchor.position },
     });
   }

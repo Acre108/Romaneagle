@@ -17,6 +17,7 @@ The suite covers:
 - grid movement, narrow-passage reordering, reordered Fall back, shared movement/combat confirmation previews, terrain capacity and overflow;
 - deterministic formation AI selection, obstacle detours, ranged targeting, charges, and engaged combat execution;
 - representative melee, formation-derived Pressure and Resistance, Attack/Armour/Defence, multi-HP models, model-size capacity, equipment abilities, Battle's shove threshold, per-order morale, wavering, rout contagion, what an order pays by angle of attack (`gridBattleTracks.test.ts`), gap-closing Battle contacts, complete file follow-through, formation-wide infantry and cavalry charges, routing, casualty, and battle-outcome behaviour;
+- the plain-English battle log, one entry per activation and no raw block IDs (`battleLog.test.ts`);
 - deterministic isometric projection, picking, and soldier-mark layout.
 
 The browser smoke test plays the real game in your installed Chrome. It covers consecutive battles, input during the computer's turn, the reset confirmation, the debrief preview, and the sandbox deployment:

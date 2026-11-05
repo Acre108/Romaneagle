@@ -450,7 +450,7 @@ export function resolveRangedVolley(
     return { ok: false, reason: "Target must be in the formation's forward arc, range, and line of sight." };
   }
   formation.ammunition = Math.max(0, (formation.ammunition ?? 0) - 1);
-  emitEvent(state, "ranged_volley", `${formation.name} loosed ${preview.weaponLabel.toLowerCase()} from ${sources.length} firing blocks into ${targets.length} blocks of ${state.formations[defender.formationId!]?.name ?? defender.id}.`, {
+  emitEvent(state, "ranged_volley", `${formation.name} loosed ${preview.weaponLabel.toLowerCase()} from ${sources.length} firing block${sources.length === 1 ? "" : "s"} into ${targets.length} block${targets.length === 1 ? "" : "s"} of ${state.formations[defender.formationId!]?.name ?? defender.id}.`, {
     blockIds: [...sources.map((source) => source.id), ...targets.map((target) => target.id)],
     formationIds: [formation.id, defender.formationId].filter((id): id is string => Boolean(id)),
     sourcePosition: { ...sources[0]!.position },

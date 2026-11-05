@@ -38,7 +38,7 @@ export function pressureCalculationLines(preview: PressurePreview): string[] {
     `Net pressure: ${preview.attackingPressure} - ${preview.defendingResistance} = ${preview.netPressure}`,
     `Damage: ${preview.rawDamage} - ${protection} protection${preview.damagePenalty > 0 ? ` - ${preview.damagePenalty} order penalty` : ""} = ${preview.damageOnHit} on hit`,
     `Protection: ${preview.armour} armour + ${preview.shieldArmour} shield + ${preview.braceArmour} brace`,
-    `Defence: ${preview.defence}% evade; ${100 - preview.defence}% hit`,
+    ...(preview.defence > 0 ? [`Defence: ${preview.defence}% evade; ${100 - preview.defence}% hit`] : []),
     `Contact: ${preview.contactEdge}; damage range ${preview.minimumDamage}–${preview.maximumDamage}`,
   ];
 }

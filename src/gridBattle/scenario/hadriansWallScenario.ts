@@ -119,6 +119,7 @@ export function createHadriansWallScenario(selectedRomanFormationIds: readonly s
   relocateFormation(state, "saxon-cavalry", [
     { x: 2, y: 4 }, { x: 2, y: 5 }, { x: 2, y: 6 },
   ]);
+  state.formations["saxon-cavalry"]!.name = "Pict Horsemen";
 
   if (selectedRomanFormationIds.length > 0) {
     applyCampaignRomanDeployment(state, "roman-1-hadrians-wall", selectedRomanFormationIds);

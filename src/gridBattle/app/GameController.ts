@@ -7,8 +7,11 @@ import { BALANCE } from "../model/config";
 import type { BattleAction, Direction, FactionId, Formation, GameState, GridPosition, OrderConfirmationPreview, TroopBlock } from "../model/types";
 import { attackingPressure, chargeConfirmationPreview, chargePreview, defendingResistance, rearSupport } from "../rules/combat";
 import { mergeCandidates } from "../rules/formationActions";
-import { moveDirectionFromCell } from "../rules/movement";
-import { connectedComponents, provisionalFormationFamily } from "../rules/splitting";
+import { moveDirectionFromCell, planFormationMove } from "../rules/movement";
+import { battleLogEntries } from "../rules/battleLog";
+import { moraleWord } from "../rules/formationPlates";
+import { oppositeDirection, rotateDirection } from "../rules/direction";
+import { connectedComponents, originalFormationId, provisionalFormationFamily } from "../rules/splitting";
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
 import { formationFamilyIsRouted } from "../rules/routing";
 import { remainingActivations } from "../rules/turnSystem";
@@ -17,7 +20,7 @@ import { createPrototypeGridScenario } from "../scenario/prototypeScenario";
 import type { GridBattleScenarioFactory } from "../scenario/campaignScenario";
 import { BattlefieldRenderer } from "../rendering/BattlefieldRenderer";
 import type { AnimationSpeed } from "../rendering/AnimationQueue";
-import { blockHitPoints, hasEquipment, isCavalry } from "../model/unitStats";
+import { blockHitPoints, isCavalry, formationPressure, formationResistance } from "../model/unitStats";
 import { rangedAttackPreview, rangedConfirmationPreview, type RangedAttackPreview } from "../rules/rangedCombat";
 import { getRangedWeaponProfile } from "../../units/RangedWeapons";
 import { planAiActivation, type AiActivationPlan } from "../ai/formationAi";
@@ -63,6 +66,8 @@ export class GridBattleController {
   private moraleVisible = false;
   /** A block being read, not ordered. This is view state only and never reaches the rules. */
   private inspectedBlockId: string | null = null;
+  /** Names outlive routed and destroyed formations so the log can still name them. */
+  private readonly formationNames = new Map<string, string>();
   private concluded = false;
   private started = false;
   private rendererReady = false;
@@ -297,7 +302,9 @@ export class GridBattleController {
       return;
     }
     this.clearInspection();
-    this.dispatch({ type: "select_cell", position });
+    if (this.dispatch({ type: "select_cell", position })) {
+      requiredElement("grid-action-help").textContent = `${this.selectedFormation()?.name ?? "Formation"} selected. Choose an order.`;
+    }
   }
 
   private beginOrderPreview(preview: OrderConfirmationPreview, command: GameCommand): void {
@@ -338,6 +345,13 @@ export class GridBattleController {
     }
     hover.textContent = `${String.fromCharCode(65 + position.x)}${position.y + 1} · ${this.renderer.terrainDescription(position)}`;
     const formation = this.selectedFormation();
+    if (formation && this.state.currentAction === "move") {
+      const direction = moveDirectionFromCell(formation, this.state, position);
+      const plan = direction ? planFormationMove(this.state, formation.id, direction) : null;
+      if (plan?.plan) hover.textContent += ` · Costs ${plan.plan.movementCosts[formation.id] ?? 0} of ${formation.movementRemaining} movement left`;
+      else if (plan?.reason) hover.textContent += ` · ${plan.reason}`;
+      return;
+    }
     if (!formation || (this.state.currentAction !== "charge" && this.state.currentAction !== "shoot")) return;
     const enemy = blocksAt(this.state, position).find((block) => block.factionId !== formation.factionId);
     if (this.state.currentAction === "shoot") {
@@ -448,7 +462,7 @@ export class GridBattleController {
     }
     this.planAndDispatch({ type: "choose_action", action });
     const help: Record<BattleAction, string> = {
-      move: "Click highlighted cardinal translations, then choose the final facing. Blocks pivot in place.",
+      move: `Click a highlighted square to step; hover it for the cost. ${formation.movementRemaining} movement left. Then choose the final facing.`,
       shoot: "Click a highlighted enemy. Every block with range and line of sight strikes a separate block in that target formation; frontal shields block some lanes.",
       charge: "Click an enemy in the forward lane. Infantry charge 1–2 squares; difficult terrain limits them to 1.",
       reform: "Click a green destination, or an adjacent friendly block to transfer the selected character.",
@@ -592,11 +606,13 @@ export class GridBattleController {
     const inspected = this.inspectedFormation();
     const formation = inspected ?? this.selectedFormation();
     requiredElement("grid-formation-label").textContent = inspected ? "INSPECTING FORMATION" : "SELECTED FORMATION";
+    requiredElement("grid-formation-more-toggle").hidden = !formation;
     const name = requiredElement("grid-formation-name");
     const stats = requiredElement("grid-formation-stats");
     if (!formation) {
       name.textContent = "No formation selected";
       stats.replaceChildren();
+      requiredElement("grid-formation-more").replaceChildren();
       return;
     }
     const blocks = formation.blockIds.map((id) => this.state.blocks[id]).filter((block) => block !== undefined);
@@ -606,36 +622,34 @@ export class GridBattleController {
     const breakup = formation.provisionalFamilyId
       ? `${family.length} bodies — shared activation · ${hasStragglers ? "stragglers attached" : `regroup ${formation.failedRegroupActivations ?? 0}/${BALANCE.fragmentRegroupGraceActivations}`}`
       : formation.status === "fragment" ? "Independent fragment" : "Unified";
-    const moraleState = formation.cohesion <= 0 ? "Routed"
-      : formation.cohesion <= BALANCE.breakingMoraleThreshold ? "Breaking"
-        : formation.cohesion < 7 ? "Shaken" : "Steady";
     const rangedWeapon = formation.unit.rangedWeaponId
       ? getRangedWeaponProfile(formation.unit.rangedWeaponId)
       : null;
     name.textContent = formation.name;
+    const wavering = blocks.filter((block) => blockIsWavering(this.state, block.id)).length;
+    const optional: [string, string | number][] = [];
+    if (rangedWeapon) optional.push(["Ranged", `${rangedWeapon.label} · ${formation.ammunition ?? 0} ${rangedWeapon.ammunitionLabel}`]);
+    if (formation.isBraced) optional.push(["Stance", "Braced (+1 armour)"]);
+    if (characters.length > 0) optional.push(["Characters", characters.join(", ")]);
+    if (formation.provisionalFamilyId || formation.status === "fragment") optional.push(["Split", breakup]);
     stats.replaceChildren(...definitionRows([
       ["Faction", this.factionLabel(formation.factionId)],
-      ["Status", formation.status],
-      ["Engagement", formationIsEngaged(this.state, formation.id) ? "Engaged" : "Free"],
-      ["Breakup", breakup],
-      ["Facing", formation.facing],
-      ["Formation", formation.formationMode],
-      ["Unit type", formation.unit.unitType.replaceAll("_", " ")],
+      ["Morale", `${formation.cohesion}/${formation.maxCohesion} · ${moraleWord(formation)}`],
+      ["Men", blocks.reduce((sum, block) => sum + block.models, 0)],
       ["Blocks", blocks.length],
-      ["Models", blocks.reduce((sum, block) => sum + block.models, 0)],
+      ["Wavering blocks", wavering],
+      ["Type", `${formation.unit.unitType.replaceAll("_", " ")} · ${formation.formationMode}`],
+      ["Attack / Armour", `${formation.unit.attack} / ${formation.unit.armour}`],
+      ["Base pressure / resistance", `${formationPressure(formation)} / ${formationResistance(formation)}`],
+      ["Facing", formation.facing],
+      ["Movement left", formation.movementRemaining],
+      ...optional,
+    ]));
+    requiredElement("grid-formation-more").replaceChildren(...definitionRows([
+      ["Engagement", formationIsEngaged(this.state, formation.id) ? "Engaged" : "Free"],
       ["Model size", formation.unit.modelSize],
-      ["Attack", formation.unit.attack],
-      ["Ranged weapon", rangedWeapon?.label ?? "None"],
-      ["Ammunition", rangedWeapon ? `${formation.ammunition ?? 0} ${rangedWeapon.ammunitionLabel}` : "—"],
-      ["Armour", formation.unit.armour],
-      ["Defence", `${formation.unit.defence}%`],
       ["HP per model", formation.unit.hitPointsPerModel],
-      ["Morale", `${formation.cohesion}/${formation.maxCohesion}`],
-      ["Morale state", moraleState],
-      ["Wavering blocks", `${blocks.filter((block) => blockIsWavering(this.state, block.id)).length}/${blocks.length}`],
-      ["Movement", formation.movementRemaining],
-      ["Stance", formation.isBraced ? "Braced (+1 armour)" : "Mobile"],
-      ["Characters", characters.join(", ") || "None"],
+      ["Defence", `${formation.unit.defence}%`],
       ["Connectivity", connectedComponents(this.state, formation.id).length === 1 ? "Intact" : "Broken"],
     ]));
   }
@@ -647,25 +661,26 @@ export class GridBattleController {
     const name = requiredElement("grid-block-name");
     const stats = requiredElement("grid-block-stats");
     if (!block) {
-      name.textContent = "Click a selected formation block again";
+      name.textContent = "Click a block for its details";
       stats.replaceChildren();
       return;
     }
     const character = block.characterId ? this.state.characters[block.characterId] : undefined;
     const formation = block.formationId ? this.state.formations[block.formationId] : undefined;
-    name.textContent = block.id;
+    name.textContent = `${String.fromCharCode(65 + block.position.x)}${block.position.y + 1} · ${formation?.name ?? "Block"}`;
+    const facing = blockFacing(this.state, block.id);
+    const optional: [string, string | number][] = [];
+    if (character) optional.push(["Character", `${character.name} (${character.role})`]);
+    if (block.isContested) optional.push(["Contested", "Intermingled with the enemy"]);
     stats.replaceChildren(...definitionRows([
-      ["Models", `${block.models}/${block.modelCapacity}`],
+      ["Men", `${block.models}/${block.modelCapacity}`],
       ["Hit points", formation ? blockHitPoints(formation, block) : 0],
-      ["Facing", blockFacing(this.state, block.id)],
-      ["Morale", blockIsWavering(this.state, block.id) ? "Wavering" : "Steady"],
+      ["State", blockIsWavering(this.state, block.id) ? "Wavering" : "Steady"],
       ["Pressure", attackingPressure(this.state, block.id)],
-      ["Resistance", defendingResistance(this.state, block.id, blockFacing(this.state, block.id))],
-      ["Shield", formation && hasEquipment(formation, "shield_front") ? "+1 frontal armour" : "None"],
-      ["Equipment", formation?.unit.equipment.join(", ").replaceAll("_", " ") || "None"],
+      ["Resistance", `${defendingResistance(this.state, block.id, facing)} front · ${defendingResistance(this.state, block.id, rotateDirection(facing, "left"))} side · ${defendingResistance(this.state, block.id, oppositeDirection(facing))} rear`],
       ["Rear support", rearSupport(this.state, block.id)],
-      ["Host character", character ? `${character.name} (${character.role})` : "None"],
-      ["Contested", block.isContested ? "Yes" : "No"],
+      ["Equipment", formation?.unit.equipment.join(", ").replaceAll("_", " ") || "None"],
+      ...optional,
     ]));
   }
 
@@ -707,9 +722,25 @@ export class GridBattleController {
 
   private renderLog(): void {
     const log = requiredElement<HTMLOListElement>("grid-combat-log");
-    const rows = this.state.eventLog.slice(-12).reverse().map((event) => {
+    for (const formation of Object.values(this.state.formations)) {
+      const key = originalFormationId(formation.id);
+      if (!this.formationNames.has(key)) this.formationNames.set(key, formation.name);
+    }
+    const rows = battleLogEntries(this.state.eventLog, this.formationNames).map((entry) => {
       const item = document.createElement("li");
-      item.textContent = event.message;
+      item.textContent = entry.headline;
+      for (const note of entry.moraleNotes) {
+        const line = document.createElement("span");
+        line.className = "grid-log-morale";
+        line.textContent = note;
+        item.append(line);
+      }
+      for (const detail of entry.details) {
+        const line = document.createElement("span");
+        line.className = "grid-log-detail";
+        line.textContent = detail;
+        item.append(line);
+      }
       return item;
     });
     if (rows.length === 0) {

@@ -119,6 +119,7 @@ export function createVindolandaScenario(selectedRomanFormationIds: readonly str
   relocateFormation(state, "saxon-cavalry", [
     { x: 17, y: 5 }, { x: 17, y: 6 }, { x: 17, y: 7 },
   ]);
+  state.formations["saxon-cavalry"]!.name = "Raven Horsemen";
 
   if (selectedRomanFormationIds.length > 0) {
     applyCampaignRomanDeployment(state, "roman-3-raven-at-vindolanda", selectedRomanFormationIds);

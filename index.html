@@ -373,10 +373,11 @@
               <div id="grid-formation-label" class="eyebrow">SELECTED FORMATION</div>
               <h2 id="grid-formation-name">No formation selected</h2>
               <dl id="grid-formation-stats"></dl>
+              <details id="grid-formation-more-toggle" class="grid-card-more" hidden><summary>More</summary><dl id="grid-formation-more"></dl></details>
             </section>
             <section class="grid-info-panel panel">
               <div id="grid-block-label" class="eyebrow">SELECTED BLOCK</div>
-              <h3 id="grid-block-name">Click a selected formation block again</h3>
+              <h3 id="grid-block-name">Click a block for its details</h3>
               <dl id="grid-block-stats"></dl>
             </section>
             <section class="grid-objective panel">
@@ -390,7 +391,7 @@
           <div class="grid-board-wrap">
             <canvas id="battlefield" aria-label="Turn-based grid formation tactics battlefield"></canvas>
             <div id="grid-morale-key" class="grid-morale-key" hidden aria-label="Morale colour key">
-              <span><i class="steady"></i>Steady</span><span><i class="shaken"></i>Shaken</span><span><i class="wavering"></i>Wavering</span>
+              <span><i class="steady"></i>Steady</span><span><i class="shaken"></i>Shaken</span><span><i class="wavering"></i>Wavering or breaking</span>
             </div>
             <div id="grid-hover-info" class="grid-hover-info">Hover a square to inspect it</div>
             <canvas id="grid-minimap" class="grid-minimap" width="160" height="112" aria-label="Top-down battlefield minimap"></canvas>

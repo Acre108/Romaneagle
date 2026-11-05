@@ -1305,7 +1305,8 @@ export class BattlefieldRenderer {
       const colour = damage.factionId === "roman" ? 0x73b4ef : 0xe0aa65;
       const key = `damage:${damage.blockId}`;
       const mitigationLabel = damage.mitigationLabel ?? "evade";
-      const label = `${damage.minimumDamage}–${damage.maximumDamage} dmg\n${damage.evadeChance}% ${mitigationLabel}`;
+      const damageText = damage.minimumDamage === damage.maximumDamage ? `${damage.maximumDamage} dmg` : `${damage.minimumDamage}–${damage.maximumDamage} dmg`;
+      const label = damage.evadeChance > 0 ? `${damageText}\n${damage.evadeChance}% ${mitigationLabel}` : damageText;
       const group = new Container({ label: `damage-${damage.blockId}` });
       const bubble = this.createPreviewSpeechButton(
         key,
@@ -2030,7 +2031,7 @@ export class BattlefieldRenderer {
       text.anchor.set(0.5);
       const background = new Graphics()
         .roundRect(-text.width / 2 - 5, -text.height / 2 - 2, text.width + 10, text.height + 4, 3)
-        .fill({ color: 0x14130f, alpha: 0.82 });
+        .fill({ color: plate.factionId === "roman" ? 0x4a1418 : 0x33260f, alpha: 0.9 });
       const group = new Container({ label: `plate-${plate.key}` });
       group.position.set(position.x, position.y);
       group.eventMode = "none";
@@ -2203,7 +2204,13 @@ export class BattlefieldRenderer {
     const terrain = this.state ? terrainAt(this.state, position) ?? "outside" : "outside";
     if (!this.state) return terrain;
     const occupancy = occupancyAt(this.state, position);
-    const blocks = [occupancy.romanBlockId, occupancy.saxonBlockId].filter(Boolean).join(" + ");
+    const occupants = [occupancy.romanBlockId, occupancy.saxonBlockId].filter((id): id is string => id !== null);
+    const blocks = this.debugVisible
+      ? occupants.join(" + ")
+      : occupants.map((id) => {
+        const formationId = this.state!.blocks[id]?.formationId;
+        return formationId ? this.state!.formations[formationId]?.name ?? "" : "";
+      }).filter(Boolean).join(" + ");
     const description = terrain === "outside"
       ? terrain
       : terrainTypeDescription(

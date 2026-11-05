@@ -36,6 +36,7 @@ import { addPosition, directionVector, oppositeDirection } from "../rules/direct
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
 import { canSelectFormation } from "../rules/turnSystem";
 import { blockFacing } from "../rules/blockFacing";
+import { rememberFormationNames, withFormationNames } from "../rules/displayNames";
 import { formationPlates } from "../rules/formationPlates";
 import { isCavalry } from "../model/unitStats";
 import { edgeFeatureDefinition } from "../model/edgeFeatureDefinitions";
@@ -239,7 +240,9 @@ export class BattlefieldRenderer {
     projectTile: (position) => this.projectTile(position),
     surfaceDiamond: (position, scale) => this.surfaceDiamond(position, scale),
     hoveredCell: () => this.hoveredCell,
+    describe: (text) => withFormationNames(text, this.formationNames),
   };
+  private readonly formationNames = new Map<string, string>();
   private readonly orderPreviewOverlay = new OrderPreviewOverlay(this.orderPreviewLayer, this.boardView);
   private readonly previousBlockPositions = new Map<string, GridPosition>();
   private readonly previousCharacterPositions = new Map<string, GridPosition>();
@@ -352,7 +355,7 @@ export class BattlefieldRenderer {
     this.worldContainer.eventMode = "passive";
     this.orderPreviewLayer.eventMode = "passive";
     this.pixiUiLayer.eventMode = "none";
-    this.animationQueue = new AnimationQueue(this.app, this.effectsLayer);
+    this.animationQueue = new AnimationQueue(this.app, this.effectsLayer, this.boardView.describe);
     this.app.ticker.add(this.updateMotions, this);
     this.app.ticker.add(this.updateActivationPulse, this);
     this.minimap = document.getElementById("grid-minimap") as HTMLCanvasElement | null;
@@ -613,6 +616,8 @@ export class BattlefieldRenderer {
   }
 
   enqueueEvents(events: readonly GameEvent[]): void {
+    // A trigger can add a formation in the same command, before the next render sees it.
+    if (this.state) rememberFormationNames(this.state, this.formationNames);
     updateCasualtyMarkers(this.casualtyBodyTiles, this.casualtyTurnSkulls, events);
     this.pendingEvents = events;
     this.animationQueue?.enqueue(events);
@@ -1475,8 +1480,10 @@ export class BattlefieldRenderer {
     if (this.state && this.state !== state) {
       this.casualtyBodyTiles.clear();
       this.casualtyTurnSkulls.clear();
+      this.formationNames.clear();
     }
     this.state = state;
+    rememberFormationNames(state, this.formationNames);
     this.orderPreviewOverlay.setPreview(orderPreview);
     this.renderTerrain(state);
     this.clearDynamicLayers();

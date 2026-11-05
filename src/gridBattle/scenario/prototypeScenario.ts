@@ -25,7 +25,6 @@ import type {
 } from "../model/types";
 import { hitPointsPerModel, isCavalry } from "../model/unitStats";
 import type { RangedWeaponId } from "../../units/RangedWeapons";
-import { startingAmmunition } from "./archetypeUnits";
 
 interface FormationSpec {
   id: string;
@@ -185,18 +184,15 @@ function unitProfile(spec: FormationSpec): UnitProfile {
 
 function addFormation(state: GameState, spec: FormationSpec): void {
   const unit = unitProfile(spec);
-  deployFormation(state, {
-    ...createFormation({
-      id: spec.id,
-      factionId: spec.factionId,
-      name: spec.name,
-      facing: spec.facing,
-      formationMode: spec.formationMode,
-      unit,
-      cohesion: spec.cohesion,
-    }),
-    ...startingAmmunition(unit),
-  }, spec.positions);
+  deployFormation(state, createFormation({
+    id: spec.id,
+    factionId: spec.factionId,
+    name: spec.name,
+    facing: spec.facing,
+    formationMode: spec.formationMode,
+    unit,
+    cohesion: spec.cohesion,
+  }), spec.positions);
 }
 
 function attachCharacter(state: GameState, character: Character): void {

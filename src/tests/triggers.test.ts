@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { executeCommand } from "../gridBattle/commands/executeCommand";
+import { getRangedWeaponProfile } from "../units/RangedWeapons";
+import { commandLegality, executeCommand } from "../gridBattle/commands/executeCommand";
 import { emitEvent } from "../gridBattle/events/events";
 import {
   addMapTrigger,
@@ -76,6 +77,52 @@ describe("map triggers", () => {
     executeCommand(state, { type: "move", direction: "west" });
     executeCommand(state, { type: "move", direction: "east" });
     expect(state.triggerState.fireCounts["crossing-warning"]).toBe(1);
+  });
+
+  it("gives a spawned ranged formation its ammunition, so it can shoot", () => {
+    const state = blankState();
+    addFormation(state, "legion", [{ x: 6, y: 2 }], "east");
+    const archers: TriggerSpawnFormation = {
+      ...spawnedRaiders,
+      id: "spawned-archers",
+      facing: "west",
+      unit: { ...spawnedRaiders.unit, rangedWeaponId: "composite-bow" },
+      positions: [{ x: 6, y: 5 }],
+    };
+    addMapTrigger(state.battlefield, {
+      id: "archers-arrive",
+      label: "Archers arrive",
+      once: true,
+      condition: { type: "round_starts", round: 2 },
+      effects: [{ type: "spawn_formation", formation: archers }],
+    });
+    state.round = 2;
+    evaluateMapTriggers(state, [emitEvent(state, "round_started", "Round 2 began.")]);
+
+    const spawned = state.formations[archers.id]!;
+    expect(spawned.ammunition).toBe(getRangedWeaponProfile("composite-bow").maximumAmmunition);
+
+    spawned.facing = "north";
+    state.activeFactionId = "saxon";
+    expect(executeCommand(state, { type: "select_cell", position: { x: 6, y: 5 } }).accepted).toBe(true);
+    expect(commandLegality(state, "shoot").accepted).toBe(true);
+    expect(executeCommand(state, { type: "shoot", defenderId: "legion-b1" }, { confirmed: true }).accepted).toBe(true);
+    expect(state.formations[archers.id]!.ammunition).toBe(getRangedWeaponProfile("composite-bow").maximumAmmunition - 1);
+  });
+
+  it("refuses a map whose spawned unit has an unknown weapon", () => {
+    const state = blankState();
+    addMapTrigger(state.battlefield, {
+      id: "good-trigger",
+      label: "Good trigger",
+      once: true,
+      condition: { type: "round_starts", round: 2 },
+      effects: [{ type: "spawn_formation", formation: { ...spawnedRaiders, unit: { ...spawnedRaiders.unit, rangedWeaponId: "composite-bow" } } }],
+    });
+    const document = JSON.parse(JSON.stringify(serializeBattlefieldMap(state.battlefield)));
+    document.triggers[0].effects[0].formation.unit.rangedWeaponId = "trebuchet";
+
+    expect(() => parseBattlefieldMap(document)).toThrow("unknown ranged weapon");
   });
 
   it("spawns a formation and gives it one deterministic attack activation", () => {

@@ -1,7 +1,6 @@
 import type { UnitArchetypeProfile } from "../../units/UnitArchetypes";
-import { getRangedWeaponProfile } from "../../units/RangedWeapons";
 import { BALANCE } from "../model/config";
-import type { EquipmentAbility, Formation, FormationMode, UnitProfile, UnitType } from "../model/types";
+import type { EquipmentAbility, FormationMode, UnitProfile, UnitType } from "../model/types";
 import { hitPointsPerModel } from "../model/unitStats";
 
 /** The grid-battle unit type a catalogue archetype fights as. Its movement and base stats come from this. */
@@ -37,9 +36,4 @@ export function archetypeUnitProfile(archetype: UnitArchetypeProfile, formationM
 /** Catalogue morale runs to 100; formation morale runs to 10. */
 export function archetypeCohesion(archetype: UnitArchetypeProfile): number {
   return Math.max(1, Math.min(10, Math.round(archetype.startingMorale / 10)));
-}
-
-/** A formation's full ammunition, for units that carry a ranged weapon. */
-export function startingAmmunition(unit: UnitProfile): Pick<Formation, "ammunition"> {
-  return unit.rangedWeaponId ? { ammunition: getRangedWeaponProfile(unit.rangedWeaponId).maximumAmmunition } : {};
 }

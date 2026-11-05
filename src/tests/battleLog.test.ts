@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { executeCommand } from "../gridBattle/commands/executeCommand";
 import { resolveCharge } from "../gridBattle/rules/charge";
+import { withFormationNames } from "../gridBattle/rules/displayNames";
 import { forceSplit } from "../gridBattle/rules/formationActions";
 import { resolveEngagedOrder } from "../gridBattle/rules/engagement";
 import { battleLogEntries } from "../gridBattle/rules/battleLog";
@@ -42,6 +43,11 @@ describe("the battle log", () => {
       event(4, "activation_ended", "I Cohort · Prima ended its activation.", { formationIds: ["R-I"] }),
     ], NAMES);
     expect(entry?.headline).toBe("I Cohort · Prima moved 2 squares, facing east.");
+  });
+
+  it("names overflow and fragment blocks too", () => {
+    expect(withFormationNames("1 models from R-I-b6 formed R-I-b6-overflow-1.", NAMES)).toBe("1 models from I Cohort · Prima formed I Cohort · Prima.");
+    expect(withFormationNames("great-warband-fragment-2-b4 was destroyed.", NAMES)).toBe("Great Warband was destroyed.");
   });
 
   it("never shows a raw block ID", () => {

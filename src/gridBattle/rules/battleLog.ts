@@ -1,5 +1,6 @@
 import type { GameEvent, PressureResult } from "../model/types";
-import { originalFormationId, familyDisplayName } from "./splitting";
+import { blockFormationId, formationDisplayName, withFormationNames } from "./displayNames";
+import { originalFormationId } from "./splitting";
 
 export interface BattleLogEntry {
   headline: string;
@@ -9,8 +10,6 @@ export interface BattleLogEntry {
 }
 
 const DEFAULT_ENTRY_LIMIT = 8;
-const BLOCK_ID_PATTERN = /[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-b\d+/g;
-const FRAGMENT_LABEL = / – (Main Body|Fragment [A-Z]+)/g;
 
 /** Reported as they are written, because they already name formations and matter to the player. */
 const REPORTED_EVENTS: ReadonlySet<GameEvent["type"]> = new Set<GameEvent["type"]>([
@@ -37,21 +36,6 @@ const MORALE_EVENTS: ReadonlySet<GameEvent["type"]> = new Set<GameEvent["type"]>
 const RESULT_WORDS: readonly [PressureResult, string][] = [
   ["scattered", "scattered"], ["pushed", "pushed"], ["wavers", "wavers"], ["holds", "holds"],
 ];
-
-function formationName(names: ReadonlyMap<string, string>, formationId: string): string {
-  const name = names.get(originalFormationId(formationId));
-  return familyDisplayName(name ?? originalFormationId(formationId).replaceAll("-", " "));
-}
-
-function blockFormationId(blockId: string): string {
-  return originalFormationId(blockId.replace(/-b\d+$/, ""));
-}
-
-function withFormationNames(message: string, names: ReadonlyMap<string, string>): string {
-  return message
-    .replace(BLOCK_ID_PATTERN, (blockId) => formationName(names, blockFormationId(blockId)))
-    .replace(FRAGMENT_LABEL, "");
-}
 
 function squares(count: number): string {
   return `${count} ${count === 1 ? "square" : "squares"}`;
@@ -89,7 +73,7 @@ function recordEvent(tally: ActivationTally, event: GameEvent, names: ReadonlyMa
       return;
     case "engaged_order_resolved":
       if (!formationId) recordPlainEvent(tally, event, named);
-      else if (detail?.kind === "engaged_order") tally.headlines.push(`${formationName(names, formationId)} ${detail.order === "press" ? "pressed" : "fought a Battle"}.`);
+      else if (detail?.kind === "engaged_order") tally.headlines.push(`${formationDisplayName(names, formationId)} ${detail.order === "press" ? "pressed" : "fought a Battle"}.`);
       else tally.headlines.push(named);
       return;
     case "formation_moved":
@@ -100,7 +84,7 @@ function recordEvent(tally: ActivationTally, event: GameEvent, names: ReadonlyMa
       return;
     case "formation_rotated":
       if (!formationId) recordPlainEvent(tally, event, named);
-      else if (detail?.kind === "turned") tally.headlines.push(`${formationName(names, formationId)} turned to face ${detail.facing}.`);
+      else if (detail?.kind === "turned") tally.headlines.push(`${formationDisplayName(names, formationId)} turned to face ${detail.facing}.`);
       else if (detail?.kind === "final_facing") tally.finalFacing.set(originalFormationId(formationId), detail.facing);
       return;
     case "formation_merged":
@@ -136,20 +120,20 @@ function composeEntry(tally: ActivationTally, names: ReadonlyMap<string, string>
   const { headlines, details, moraleNotes, losses, results, steps, finalFacing, actor } = tally;
   for (const [key, count] of steps) {
     const facing = finalFacing.get(key);
-    headlines.unshift(`${formationName(names, key)} moved ${squares(count)}${facing ? `, facing ${facing}` : ""}.`);
+    headlines.unshift(`${formationDisplayName(names, key)} moved ${squares(count)}${facing ? `, facing ${facing}` : ""}.`);
   }
   if (headlines.length === 0 && actor && details.length === 0 && moraleNotes.length === 0 && losses.size === 0) {
-    headlines.push(`${formationName(names, actor)} held its ground.`);
+    headlines.push(`${formationDisplayName(names, actor)} held its ground.`);
   }
   for (const [key, tallyByResult] of results) {
     const words = RESULT_WORDS.flatMap(([result, word]) => {
       const count = tallyByResult.get(result) ?? 0;
       return count > 0 ? [`${word} ×${count}`] : [];
     });
-    details.unshift(`${formationName(names, key)}: ${words.join(", ")}.`);
+    details.unshift(`${formationDisplayName(names, key)}: ${words.join(", ")}.`);
   }
   if (losses.size > 0) {
-    details.push(`Lost: ${[...losses].map(([key, count]) => `${formationName(names, key)} ${count}`).join(", ")}.`);
+    details.push(`Lost: ${[...losses].map(([key, count]) => `${formationDisplayName(names, key)} ${count}`).join(", ")}.`);
   }
   const headline = headlines.shift() ?? details.shift() ?? moraleNotes[0];
   if (!headline) return null;

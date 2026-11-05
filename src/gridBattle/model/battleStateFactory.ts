@@ -1,3 +1,4 @@
+import { getRangedWeaponProfile } from "../../units/RangedWeapons";
 import type { BattlefieldMap } from "./battlefieldMap";
 import type { Direction, FactionId, Formation, FormationMode, GameState, GridPosition, TroopBlock, UnitProfile } from "./types";
 import { modelCapacity } from "./unitStats";
@@ -39,7 +40,7 @@ interface NewFormation {
   maxCohesion?: number;
 }
 
-/** A fresh formation with no blocks yet, ready to activate. */
+/** A fresh formation with no blocks yet, ready to activate, carrying its full ammunition if it has a ranged weapon. */
 export function createFormation(spec: NewFormation): Formation {
   return {
     id: spec.id,
@@ -57,6 +58,7 @@ export function createFormation(spec: NewFormation): Formation {
     hasActivated: false,
     leaderCharacterId: null,
     status: "formed",
+    ...(spec.unit.rangedWeaponId ? { ammunition: getRangedWeaponProfile(spec.unit.rangedWeaponId).maximumAmmunition } : {}),
   };
 }
 

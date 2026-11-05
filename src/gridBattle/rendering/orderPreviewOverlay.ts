@@ -8,6 +8,8 @@ export interface BoardView {
   projectTile(position: GridPosition): ScreenPosition;
   surfaceDiamond(position: GridPosition, scale?: number): number[];
   hoveredCell(): GridPosition | null;
+  /** Replaces block ids in a line of text with the names players know. */
+  describe(text: string): string;
 }
 
 interface PreviewMathHitArea {
@@ -106,7 +108,7 @@ export class OrderPreviewOverlay {
         const marker = this.createPreviewSpeechButton(
           key,
           `${tile.chance}%`,
-          `${tile.chance}% chance ${tile.blockId ?? "a block"} ends in ${String.fromCharCode(65 + tile.position.x)}${tile.position.y + 1}. Activate for calculation.`,
+          `${tile.chance}% chance ${tile.blockId ? this.view.describe(tile.blockId) : "a block"} ends in ${String.fromCharCode(65 + tile.position.x)}${tile.position.y + 1}. Activate for calculation.`,
           colour,
           58,
         );
@@ -144,7 +146,7 @@ export class OrderPreviewOverlay {
       const bubble = this.createPreviewSpeechButton(
         key,
         label,
-        `${damage.blockId} takes ${damage.minimumDamage} to ${damage.maximumDamage} damage with ${damage.evadeChance}% ${mitigationLabel}. Activate for calculation.`,
+        `${this.view.describe(damage.blockId)} takes ${damage.minimumDamage} to ${damage.maximumDamage} damage with ${damage.evadeChance}% ${mitigationLabel}. Activate for calculation.`,
         colour,
         78,
       );
@@ -197,7 +199,7 @@ export class OrderPreviewOverlay {
         detail,
         centre.x - 155,
         centre.y + (expandedTile ? 34 : -178),
-        item.math,
+        item.math.map((line) => this.view.describe(line)),
         colour,
       );
       detail.eventMode = "none";

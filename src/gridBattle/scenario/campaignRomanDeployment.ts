@@ -5,7 +5,7 @@ import { BALANCE, GRID_COLUMNS, GRID_ROWS } from "../model/config";
 import { buildingCellAt, terrainAt, terrainElevationAt, terrainObjectsAt } from "../model/terrain";
 import type { Character, Formation, FormationMode, GameState, GridPosition } from "../model/types";
 import { modelCapacity } from "../model/unitStats";
-import { archetypeCohesion, archetypeUnitProfile, startingAmmunition } from "./archetypeUnits";
+import { archetypeCohesion, archetypeUnitProfile } from "./archetypeUnits";
 import { manhattanDistance } from "../rules/direction";
 
 interface DeploymentLayout {
@@ -94,18 +94,15 @@ function addFormation(
   const archetype = getUnitArchetype(definition.archetypeId);
   const formationMode = campaignFormationMode(archetype);
   const unit = archetypeUnitProfile(archetype, formationMode);
-  const formation: Formation = {
-    ...createFormation({
-      id: definition.id,
-      factionId: "roman",
-      name: definition.name,
-      facing: "north",
-      formationMode,
-      unit,
-      cohesion: archetypeCohesion(archetype),
-    }),
-    ...startingAmmunition(unit),
-  };
+  const formation = createFormation({
+    id: definition.id,
+    factionId: "roman",
+    name: definition.name,
+    facing: "north",
+    formationMode,
+    unit,
+    cohesion: archetypeCohesion(archetype),
+  });
   const requiredBlocks = Math.ceil(definition.count / modelCapacity(formation));
   if (positions.length !== requiredBlocks) {
     throw new Error(`${definition.name} needs ${requiredBlocks} deployment blocks, received ${positions.length}.`);

@@ -333,7 +333,7 @@ export class GridBattleController {
     const enemy = blocksAt(this.state, position).find((block) => block.factionId !== formation.factionId);
     if (this.state.currentAction === "shoot") {
       const preview = enemy ? rangedAttackPreview(this.state, formation.id, enemy.id) : null;
-      renderRangedPreview(preview, enemy && preview ? rangedConfirmationPreview(this.state, formation.id, enemy.id)?.forecast ?? [] : []);
+      renderRangedPreview(preview, enemy && preview ? rangedConfirmationPreview(this.state, formation.id, enemy.id)?.forecast ?? [] : [], this.formationNames);
       return;
     }
     const attacker = enemy ? this.chargeSourceFor(enemy.id) : undefined;

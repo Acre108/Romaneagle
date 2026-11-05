@@ -16,7 +16,8 @@ once during the same evaluation. Definitions execute in map order.
 ## Supported effects
 
 - `character_interaction`: records speaker, text, optional character ID, and writes the exchange to the battle event log.
-- `spawn_formation`: creates a complete unit-level formation from an authored unit profile and block footprint.
+- `spawn_formation`: creates a complete unit-level formation from an authored unit profile and block footprint. A unit
+  with `rangedWeaponId` arrives with that weapon's full ammunition; an unknown weapon is refused when the map loads.
 - `activate_to_attack`: gives a named formation one immediate deterministic activation against the nearest block of the
   target faction. It advances by legal formation moves, faces a legal adjacent target, and resolves one pressure attack.
 

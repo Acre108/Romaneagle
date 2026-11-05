@@ -2,6 +2,7 @@ import { BALANCE } from "../model/config";
 import type { FactionId, Formation, GameState, OrderConfirmationPreview, TroopBlock } from "../model/types";
 import { blockHitPoints, formationPressure, formationResistance, isCavalry } from "../model/unitStats";
 import { blockFacing } from "../rules/blockFacing";
+import { rememberFormationNames, withFormationNames } from "../rules/displayNames";
 import { battleLogEntries } from "../rules/battleLog";
 import type { MissionObjectiveDefinition } from "../rules/campaignObjectives";
 import { attackingPressure, defendingResistance, rearSupport } from "../rules/combat";
@@ -10,7 +11,7 @@ import { oppositeDirection, rotateDirection } from "../rules/direction";
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
 import { moraleWord } from "../rules/formationPlates";
 import type { RangedAttackPreview } from "../rules/rangedCombat";
-import { connectedComponents, originalFormationId, provisionalFormationFamily } from "../rules/splitting";
+import { connectedComponents, provisionalFormationFamily } from "../rules/splitting";
 import { getRangedWeaponProfile } from "../../units/RangedWeapons";
 import { requiredElement } from "../../ui/dom";
 import { blockFormation } from "../model/occupancy";
@@ -61,7 +62,7 @@ export function renderOrderPreview(state: GameState, preview: OrderConfirmationP
   setPreviewLines(["Choose Battle, Press, Charge, or Shoot to see what the order will do."]);
 }
 
-export function renderRangedPreview(preview: RangedAttackPreview | null, forecast: readonly string[] = []): void {
+export function renderRangedPreview(preview: RangedAttackPreview | null, forecast: readonly string[] = [], formationNames: ReadonlyMap<string, string> = new Map()): void {
   const panel = requiredElement("grid-combat-preview");
   if (!preview) {
     panel.textContent = "Choose Shoot, then hover or click a highlighted enemy block.";
@@ -90,7 +91,7 @@ export function renderRangedPreview(preview: RangedAttackPreview | null, forecas
   const math = document.createElement("div");
   summary.textContent = "Volley math";
   math.className = "grid-preview-math-detail";
-  math.textContent = preview.math.join("\n");
+  math.textContent = preview.math.map((line) => withFormationNames(line, formationNames)).join("\n");
   detail.append(summary, math);
   panel.append(detail);
 }
@@ -182,10 +183,7 @@ export function renderBlockPanel(state: GameState, inspected: TroopBlock | undef
 
 export function renderLog(state: GameState, formationNames: Map<string, string>): void {
   const log = requiredElement<HTMLOListElement>("grid-combat-log");
-  for (const formation of Object.values(state.formations)) {
-    const key = originalFormationId(formation.id);
-    if (!formationNames.has(key)) formationNames.set(key, formation.name);
-  }
+  rememberFormationNames(state, formationNames);
   const rows = battleLogEntries(state.eventLog, formationNames).map((entry) => {
     const item = document.createElement("li");
     item.textContent = entry.headline;

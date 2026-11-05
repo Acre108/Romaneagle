@@ -1,3 +1,4 @@
+import { isRangedWeaponId } from "../../units/RangedWeapons";
 import { UNIT_ARCHETYPE_BY_ID } from "../../units/UnitArchetypes";
 import type { BuildingCell, Direction, GridPosition } from "./types";
 import { isGroundTerrain, isGroundTexture, isTerrainObject, terrainSupportsGroundTexture, terrainDefinition } from "./terrainDefinitions";
@@ -83,6 +84,9 @@ function validateTriggerEffect(document: BattlefieldMapDocument, triggerId: stri
     || !Number.isFinite(formation.unit.movement) || formation.unit.movement <= 0
     || !Array.isArray(formation.unit.equipment)) {
     throw new Error(`Trigger ${triggerId} has an invalid spawn unit profile.`);
+  }
+  if (formation.unit.rangedWeaponId !== undefined && !isRangedWeaponId(formation.unit.rangedWeaponId)) {
+    throw new Error(`Trigger ${triggerId} spawn has an unknown ranged weapon.`);
   }
   if (!Array.isArray(formation.positions) || formation.positions.length === 0) {
     throw new Error(`Trigger ${triggerId} spawn must contain at least one block position.`);

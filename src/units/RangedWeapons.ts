@@ -103,6 +103,10 @@ export const RANGED_WEAPONS: readonly RangedWeaponProfile[] = [
   LIGHT_BALLISTAE,
 ];
 
+export function isRangedWeaponId(value: unknown): value is RangedWeaponId {
+  return RANGED_WEAPONS.some((weapon) => weapon.id === value);
+}
+
 export function getRangedWeaponProfile(id: RangedWeaponId): RangedWeaponProfile {
   const profile = RANGED_WEAPONS.find((candidate) => candidate.id === id);
   if (!profile) throw new Error(`Unknown ranged weapon profile: ${id}`);

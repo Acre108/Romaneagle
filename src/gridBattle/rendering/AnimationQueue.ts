@@ -41,7 +41,11 @@ export class AnimationQueue {
     durationMs: number;
   }> = [];
 
-  constructor(private readonly app: Application, private readonly layer: Container) {
+  constructor(
+    private readonly app: Application,
+    private readonly layer: Container,
+    private readonly describe: (text: string) => string,
+  ) {
     app.ticker.add(this.update, this);
   }
 
@@ -73,7 +77,7 @@ export class AnimationQueue {
           ? `${event.projectileKind?.toUpperCase() ?? "MISSILE"} VOLLEY`
         : isCasualty
           ? `-${event.casualties ?? 0} ${(event.casualties ?? 0) === 1 ? "CASUALTY" : "CASUALTIES"}`
-          : event.message,
+          : this.describe(event.message),
       style: {
         fontFamily: "Arial",
         fontSize: isSplit || isCasualty ? 22 : 13,

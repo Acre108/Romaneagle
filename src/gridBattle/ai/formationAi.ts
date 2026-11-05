@@ -229,13 +229,14 @@ function planRangedActivation(state: GameState, formation: Formation, steps: AiC
     .sort((left, right) => right.preview!.casualties - left.preview!.casualties
       || right.preview!.damage - left.preview!.damage
       || left.enemy.id.localeCompare(right.enemy.id))[0];
+  const targetName = target ? blockFormation(state, target.enemy)?.name ?? target.enemy.id : "";
   if (!target?.preview || !appendPlannedOrder(state, steps, { type: "shoot", defenderId: target.enemy.id })) return null;
   return {
     factionId: formation.factionId,
     formationId: formation.id,
     formationName: formation.name,
     intent: "shoot",
-    summary: `${formation.name} shoots at ${blockFormation(state, target.enemy)?.name ?? target.enemy.id}.`,
+    summary: `${formation.name} shoots at ${targetName}.`,
     steps,
     priority: 40_000 + target.preview.casualties * 100 + target.preview.damage,
   };
@@ -250,6 +251,7 @@ function planChargeActivation(state: GameState, formation: Formation, steps: AiC
       || right.preview!.attackBonus - left.preview!.attackBonus
       || left.preview!.distance - right.preview!.distance
       || `${left.attacker.id}:${left.defender.id}`.localeCompare(`${right.attacker.id}:${right.defender.id}`))[0];
+  const targetName = target ? blockFormation(state, target.defender)?.name ?? target.defender.id : "";
   if (!target?.preview || !appendPlannedOrder(state, steps, {
     type: "charge", attackerId: target.attacker.id, defenderId: target.defender.id,
   })) return null;
@@ -258,7 +260,7 @@ function planChargeActivation(state: GameState, formation: Formation, steps: AiC
     formationId: formation.id,
     formationName: formation.name,
     intent: "charge",
-    summary: `${formation.name} charges ${blockFormation(state, target.defender)?.name ?? target.defender.id}.`,
+    summary: `${formation.name} charges ${targetName}.`,
     steps,
     priority: 45_000 + target.preview.impactDamage * 100 + target.preview.attackBonus * 10 - target.preview.distance,
   };

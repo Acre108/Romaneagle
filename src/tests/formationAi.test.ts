@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { planAiActivation, type AiActivationPlan } from "../gridBattle/ai/formationAi";
 import { executeCommand } from "../gridBattle/commands/executeCommand";
-import { setMapTerrain } from "../gridBattle/model/battlefieldMap";
+import { serializeBattlefieldMap, setMapTerrain } from "../gridBattle/model/battlefieldMap";
+import { scenarioFactoryForMission } from "../gridBattle/scenario/campaignScenario";
 import type { GameState } from "../gridBattle/model/types";
 import { addFormation, blankState } from "./gridBattleTestState";
 
@@ -109,4 +110,21 @@ describe("formation AI", () => {
     expect(planAiActivation(state, "saxon")).toEqual(planAiActivation(structuredClone(state), "saxon"));
     expect(planAiActivation(state, "roman")).toBeNull();
   });
+
+  it("never changes the map during a battle, so planning copies can share it", () => {
+    const state = scenarioFactoryForMission("roman-2-blackwater-ford")();
+    const before = JSON.stringify(serializeBattlefieldMap(state.battlefield));
+    for (let activation = 0; activation < 60; activation += 1) {
+      const plan = planAiActivation(state, state.activeFactionId);
+      if (!plan) break;
+      for (const step of plan.steps) {
+        if (!executeCommand(state, step.command, { confirmed: step.confirmed }).accepted) {
+          executeCommand(state, { type: "end_activation" });
+          break;
+        }
+      }
+    }
+    expect(state.round).toBeGreaterThan(3);
+    expect(JSON.stringify(serializeBattlefieldMap(state.battlefield))).toBe(before);
+  }, 60_000);
 });

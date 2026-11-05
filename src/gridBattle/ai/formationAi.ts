@@ -1,3 +1,5 @@
+import { planFormationMove } from "../rules/movement";
+import { cloneForSimulation } from "../model/battleStateFactory";
 import type { GameCommand } from "../commands/executeCommand";
 import { commandLegality, executeCommand } from "../commands/executeCommand";
 import { planOrder } from "../commands/planOrder";
@@ -76,7 +78,15 @@ function selectionStep(state: GameState, formation: Formation): AiCommandStep | 
   return executeCommand(state, command).accepted ? { command, confirmed: false } : null;
 }
 
+/** Orders whose preview the player must confirm. The AI only needs to know they are legal, which executing them tests. */
+const CONFIRMED_ORDERS: ReadonlySet<GameCommand["type"]> = new Set(["shoot", "charge", "battle", "press"]);
+
 function appendPlannedOrder(state: GameState, steps: AiCommandStep[], command: GameCommand): boolean {
+  if (CONFIRMED_ORDERS.has(command.type)) {
+    if (!executeCommand(state, command, { confirmed: true }).accepted) return false;
+    steps.push({ command, confirmed: true });
+    return true;
+  }
   const planned = planOrder(state, command);
   if (!planned.ok || !planned.order) return false;
   const confirmed = planned.order.confirmation !== null;
@@ -124,7 +134,9 @@ function searchMovement(initialState: GameState, formationId: string): MovementN
       const formation = node.state.formations[formationId];
       if (!formation || node.engaged) continue;
       for (const direction of CARDINAL_DIRECTIONS) {
-        const simulated = structuredClone(node.state);
+        // Only copy the state for a move that can happen.
+        if (!planFormationMove(node.state, formationId, direction).ok) continue;
+        const simulated = cloneForSimulation(node.state);
         if (!executeCommand(simulated, { type: "move", direction }, { confirmed: true }).accepted) continue;
         const movedFormation = simulated.formations[formationId];
         if (!movedFormation) continue;
@@ -319,7 +331,7 @@ function planPassActivation(state: GameState, formation: Formation, steps: AiCom
 }
 
 function planFormationActivation(original: GameState, formationId: string): FormationPlan | null {
-  const state = structuredClone(original);
+  const state = cloneForSimulation(original);
   const formation = state.formations[formationId];
   if (!formation) return null;
   const steps: AiCommandStep[] = [];
@@ -330,11 +342,11 @@ function planFormationActivation(original: GameState, formationId: string): Form
   if (formationIsEngaged(state, formation.id)) {
     return planEngagedActivation(state, formation, steps) ?? planPassActivation(state, formation, steps);
   }
-  const charge = planChargeActivation(structuredClone(state), structuredClone(formation), [...steps]);
+  const charge = planChargeActivation(cloneForSimulation(state), structuredClone(formation), [...steps]);
   if (charge) return charge;
-  const ranged = planRangedActivation(structuredClone(state), structuredClone(formation), [...steps]);
+  const ranged = planRangedActivation(cloneForSimulation(state), structuredClone(formation), [...steps]);
   if (ranged) return ranged;
-  return planAdvanceActivation(structuredClone(state), structuredClone(formation), [...steps])
+  return planAdvanceActivation(cloneForSimulation(state), structuredClone(formation), [...steps])
     ?? planStationaryActivation(state, formation, steps)
     ?? planPassActivation(state, formation, steps);
 }

@@ -6,7 +6,7 @@ import { rememberFormationNames, withFormationNames } from "../rules/displayName
 import { battleLogEntries } from "../rules/battleLog";
 import type { MissionObjectiveDefinition } from "../rules/campaignObjectives";
 import { attackingPressure, defendingResistance, rearSupport } from "../rules/combat";
-import { chargeConfirmationPreview, chargePreview } from "../rules/charge";
+import { chargePreview } from "../rules/charge";
 import { oppositeDirection, rotateDirection } from "../rules/direction";
 import { blockIsWavering, formationIsEngaged } from "../rules/engagement";
 import { moraleWord } from "../rules/formationPlates";
@@ -28,19 +28,27 @@ function definitionRows(values: readonly [string, string | number][]): HTMLEleme
   });
 }
 
-export function renderChargePreview(state: GameState, attackerId: string | null, defenderId: string | null): void {
+/**
+ * The charge readout for a hovered target. `forecast` is the full outcome preview, which is slow to build;
+ * leave it out to show the lane summary straight away.
+ */
+export function renderChargePreview(
+  state: GameState,
+  attackerId: string | null,
+  defenderId: string | null,
+  forecast?: OrderConfirmationPreview | null,
+): void {
   const charge = attackerId && defenderId ? chargePreview(state, attackerId, defenderId) : null;
   if (!charge || !attackerId || !defenderId) {
     setPreviewLines(["Choose an enemy in the forward lane to see what the charge will do."]);
     return;
   }
-  const confirmation = chargeConfirmationPreview(state, attackerId, defenderId);
   setPreviewLines([
-    ...(confirmation?.forecast ?? []),
+    ...(forecast?.forecast ?? []),
     isCavalry(charge.unitType)
       ? `Charge lane ${charge.distance} squares · momentum ${charge.momentum} · impact ${charge.impactDamage}, then local pressure.`
       : `Infantry charge ${charge.distance} ${charge.distance === 1 ? "square" : "squares"} · ${charge.bonusNullified ? "attack bonus nullified by braced front" : `+${charge.attackBonus} attack pressure`}.`,
-    ...(confirmation?.contactSummary ?? []),
+    ...(forecast?.contactSummary ?? []),
   ]);
 }
 

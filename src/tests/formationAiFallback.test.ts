@@ -3,13 +3,13 @@ import { planAiActivation } from "../gridBattle/ai/formationAi";
 import { executeCommand } from "../gridBattle/commands/executeCommand";
 import { addFormation, blankState } from "./gridBattleTestState";
 
-vi.mock("../gridBattle/commands/planOrder", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../gridBattle/commands/planOrder")>();
+vi.mock("../gridBattle/commands/executeCommand", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../gridBattle/commands/executeCommand")>();
   return {
     ...original,
-    planOrder: (...args: Parameters<typeof original.planOrder>) => args[1].type === "battle" || args[1].type === "press"
-      ? { ok: false, reason: "Rejected for this test." }
-      : original.planOrder(...args),
+    executeCommand: (...args: Parameters<typeof original.executeCommand>) => args[1].type === "battle" || args[1].type === "press"
+      ? { accepted: false, reason: "Rejected for this test." }
+      : original.executeCommand(...args),
   };
 });
 

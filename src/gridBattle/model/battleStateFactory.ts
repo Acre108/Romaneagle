@@ -22,6 +22,15 @@ export function createBattleState(battlefield: BattlefieldMap): GameState {
   };
 }
 
+/**
+ * A copy to try orders on without touching the real battle. The map is shared, not copied:
+ * nothing in a battle edits the map (a test plays a whole battle to check), and it is the largest part of the state.
+ */
+export function cloneForSimulation(state: GameState): GameState {
+  const { battlefield, ...rest } = state;
+  return { ...structuredClone(rest), battlefield };
+}
+
 export function rectangularPositions(x: number, y: number, width: number, depth: number): GridPosition[] {
   return Array.from({ length: width * depth }, (_, index) => ({
     x: x + index % width,

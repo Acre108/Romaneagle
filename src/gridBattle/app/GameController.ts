@@ -7,7 +7,7 @@ import { eventsSince } from "../events/events";
 import { blocksAt } from "../model/occupancy";
 import { BALANCE } from "../model/config";
 import type { BattleAction, Direction, FactionId, Formation, GameState, GridPosition, OrderConfirmationPreview, TroopBlock } from "../model/types";
-import { chargePreview } from "../rules/charge";
+import { chargeConfirmationPreview, chargePreview } from "../rules/charge";
 import { mergeCandidates } from "../rules/formationActions";
 import { moveDirectionFromCell, planFormationMove } from "../rules/movement";
 import { formationIsEngaged } from "../rules/engagement";
@@ -50,6 +50,9 @@ export class GridBattleController {
   private rendererReady = false;
   private pendingOrder: { preview: OrderConfirmationPreview; command: GameCommand } | null = null;
   private computerTimer: number | null = null;
+  /** Charge outcome previews for the current state, by attacker and target. Each takes a few hundred milliseconds. */
+  private readonly chargeForecasts = new Map<string, OrderConfirmationPreview | null>();
+  private chargeForecastTimer: number | null = null;
   private computerBusy = false;
   private readonly romanFormationBaselines: readonly FormationBattleBaseline[];
 
@@ -315,6 +318,7 @@ export class GridBattleController {
   }
 
   private handleCellHover(position: GridPosition | null): void {
+    this.cancelChargeForecast();
     const hover = requiredElement("grid-hover-info");
     if (!position) {
       hover.textContent = "Hover a square to inspect it";
@@ -337,7 +341,36 @@ export class GridBattleController {
       return;
     }
     const attacker = enemy ? this.chargeSourceFor(enemy.id) : undefined;
-    renderChargePreview(this.state, enemy && attacker ? attacker.id : null, enemy?.id ?? null);
+    this.showChargePreview(enemy && attacker ? attacker.id : null, enemy?.id ?? null);
+  }
+
+  /**
+   * Shows the charge lane at once, then the full outcome once the pointer rests on the target.
+   * Building the outcome on every square the pointer crossed used to freeze the board.
+   */
+  private showChargePreview(attackerId: string | null, defenderId: string | null): void {
+    this.cancelChargeForecast();
+    if (!attackerId || !defenderId) {
+      renderChargePreview(this.state, null, null);
+      return;
+    }
+    const key = `${attackerId}>${defenderId}`;
+    if (this.chargeForecasts.has(key)) {
+      renderChargePreview(this.state, attackerId, defenderId, this.chargeForecasts.get(key));
+      return;
+    }
+    renderChargePreview(this.state, attackerId, defenderId);
+    this.chargeForecastTimer = window.setTimeout(() => {
+      this.chargeForecastTimer = null;
+      if (this.state.currentAction !== "charge") return;
+      this.chargeForecasts.set(key, chargeConfirmationPreview(this.state, attackerId, defenderId));
+      renderChargePreview(this.state, attackerId, defenderId, this.chargeForecasts.get(key));
+    }, 150);
+  }
+
+  private cancelChargeForecast(): void {
+    if (this.chargeForecastTimer !== null) window.clearTimeout(this.chargeForecastTimer);
+    this.chargeForecastTimer = null;
   }
 
   private chooseAction(action: UiAction): void {
@@ -384,7 +417,7 @@ export class GridBattleController {
     };
     requiredElement("grid-action-help").textContent = help[action];
     if (action === "shoot") renderRangedPreview(null);
-    if (action === "charge") renderChargePreview(this.state, null, null);
+    if (action === "charge") this.showChargePreview(null, null);
   }
 
   private toggleDebug(): void {
@@ -412,6 +445,7 @@ export class GridBattleController {
   private reset(): void {
     if (this.computerTimer !== null) window.clearTimeout(this.computerTimer);
     this.computerTimer = null;
+    this.cancelChargeForecast();
     this.computerBusy = false;
     this.state = this.createScenario();
     this.pendingOrder = null;
@@ -559,6 +593,8 @@ export class GridBattleController {
   }
 
   private renderAll(): void {
+    this.chargeForecasts.clear();
+    this.cancelChargeForecast();
     this.renderer.setInspectedFormation(this.inspectedFormation()?.id ?? null);
     this.renderer.render(this.state, this.pendingOrder?.preview ?? null);
     this.renderUi();

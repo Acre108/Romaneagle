@@ -7,6 +7,7 @@ import { ISO_METRICS, MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from "./isometric/IsoCo
 import { calculateIsoDepth, ISO_DEPTH_PRIORITY } from "./isometric/IsoDepth";
 import { fractionalGridToIso, type ScreenPosition } from "./isometric/IsoProjection";
 import type { BoardView } from "./orderPreviewOverlay";
+import { blockFormation } from "../model/occupancy";
 
 function projectedDirection(direction: Direction, length = 1): ScreenPosition {
   const vector = directionVector(direction);
@@ -17,9 +18,9 @@ export function drawDebugLabels(layer: Container, view: BoardView, state: GameSt
   for (const block of Object.values(state.blocks)) {
     const iso = view.projectTile(block.position);
     const component = block.formationId ? componentIndexForBlock(state, block.formationId, block.id) : -1;
-    const formation = block.formationId ? state.formations[block.formationId] : undefined;
+    const formation = blockFormation(state, block);
     const label = new Text({
-      text: `${block.position.x},${block.position.y} Â· z${calculateIsoDepth(block.position.x, block.position.y)}\n${block.id} Â· C${component}\nM${block.models} W${block.wavering ? 1 : 0} P${attackingPressure(state, block.id)} R${defendingResistance(state, block.id, formation?.facing ?? "north")}`,
+      text: `${block.position.x},${block.position.y} · z${calculateIsoDepth(block.position.x, block.position.y)}\n${block.id} · C${component}\nM${block.models} W${block.wavering ? 1 : 0} P${attackingPressure(state, block.id)} R${defendingResistance(state, block.id, formation?.facing ?? "north")}`,
       style: { fontFamily: "Arial", fontSize: 7, fill: 0xffffff, stroke: { color: 0x000000, width: 2 }, align: "center" },
     });
     label.anchor.set(0.5, 1);
@@ -54,11 +55,11 @@ export function debugReadoutText(
   const hovered = view.hoveredCell();
   const projected = hovered ? view.projectTile(hovered) : null;
   return [
-    `Camera ${camera.x.toFixed(1)}, ${camera.y.toFixed(1)} Â· zoom ${camera.zoom.toFixed(2)}`,
-    hovered ? `Picked ${hovered.x},${hovered.y} Â· iso ${projected!.x.toFixed(0)},${projected!.y.toFixed(0)} Â· depth ${calculateIsoDepth(hovered.x, hovered.y)}` : "Picked â€”",
-    `Candidates ${candidates.map((position) => `${position.x},${position.y}`).join(" Â· ") || "â€”"}`,
-    localPointer ? `Local pointer ${localPointer.x.toFixed(1)}, ${localPointer.y.toFixed(1)}` : "Local pointer â€”",
-    `Zoom range ${MIN_CAMERA_ZOOM.toFixed(2)}â€“${MAX_CAMERA_ZOOM.toFixed(2)}`,
+    `Camera ${camera.x.toFixed(1)}, ${camera.y.toFixed(1)} · zoom ${camera.zoom.toFixed(2)}`,
+    hovered ? `Picked ${hovered.x},${hovered.y} · iso ${projected!.x.toFixed(0)},${projected!.y.toFixed(0)} · depth ${calculateIsoDepth(hovered.x, hovered.y)}` : "Picked —",
+    `Candidates ${candidates.map((position) => `${position.x},${position.y}`).join(" · ") || "—"}`,
+    localPointer ? `Local pointer ${localPointer.x.toFixed(1)}, ${localPointer.y.toFixed(1)}` : "Local pointer —",
+    `Zoom range ${MIN_CAMERA_ZOOM.toFixed(2)}–${MAX_CAMERA_ZOOM.toFixed(2)}`,
   ].join("\n");
 }
 

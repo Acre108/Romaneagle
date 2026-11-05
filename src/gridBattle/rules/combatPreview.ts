@@ -9,7 +9,7 @@ import type {
 } from "../model/types";
 import { blockHitPoints } from "../model/unitStats";
 import { positionKey } from "../model/occupancy";
-import { originalFormationId } from "./splitting";
+import { originalFormationId, familyDisplayName } from "./splitting";
 
 function blockChanged(before: TroopBlock, after: TroopBlock | undefined): boolean {
   return !after
@@ -140,7 +140,7 @@ export function combatForecast(before: GameState, outcomes: readonly GameState[]
     const tally = results.get(originalId);
     if (!tally && after.every((entry) => entry.morale === start.morale)) continue;
     const member = Object.values(before.formations).find((formation) => originalFormationId(formation.id) === originalId)!;
-    const name = member.name.replace(/ \u2013 (Main Body|Fragment [A-Z]+)$/, "");
+    const name = familyDisplayName(member.name);
     const words = RESULT_LABELS.flatMap(([result, label]) => {
       const count = tally?.get(result) ?? 0;
       return count > 0 ? [`${label} \u00d7${count}`] : [];

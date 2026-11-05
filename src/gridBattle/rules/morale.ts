@@ -3,7 +3,7 @@ import { friendlyBlockAt } from "../model/occupancy";
 import type { Formation, GameState } from "../model/types";
 import { emitEvent } from "../events/events";
 import { orthogonalNeighbours } from "./direction";
-import { originalFormationId, provisionalFormationFamily } from "./splitting";
+import { originalFormationId, provisionalFormationFamily, familyDisplayName } from "./splitting";
 import { formationModelCount } from "../model/unitStats";
 
 function shockFormation(formation: Formation, loss: number): void {
@@ -66,7 +66,7 @@ function shakeFormationsBeside(state: GameState, routed: readonly Formation[]): 
       }
     }
   }
-  const name = routed[0]?.name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "") ?? "A neighbouring formation";
+  const name = (routed[0] ? familyDisplayName(routed[0].name) : "A neighbouring formation");
   for (const originalId of [...neighbours].sort()) {
     const member = Object.values(state.formations).find((formation) => originalFormationId(formation.id) === originalId);
     if (!member || member.status === "routed") continue;
@@ -102,7 +102,7 @@ export function applyCasualtyThresholds(state: GameState, formationId: string | 
   const previousStage = Math.max(...family.map((formation) => formation.casualtyMoraleStage));
   const remainingRatio = initialModels > 0 ? currentModels / initialModels : 0;
   if (remainingRatio <= BALANCE.casualtyRoutRemainingRatio && !family.some((formation) => formation.status === "routed")) {
-    const name = family[0]!.name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
+    const name = familyDisplayName(family[0]!.name);
     applyMoraleLoss(state, formationId, Math.max(...family.map((formation) => formation.cohesion)));
     emitEvent(state, "morale_shock", `${name} fell to ${Math.round(BALANCE.casualtyRoutRemainingRatio * 100)}% of its models and broke.`, {
       blockIds: family.flatMap((formation) => formation.blockIds),
@@ -123,7 +123,7 @@ export function applyCasualtyThresholds(state: GameState, formationId: string | 
   const lost = shockMoraleFamily(state, formationId, moraleLoss);
   if (lost <= 0) return;
   const crossed = BALANCE.casualtyMoraleThresholds[nextStage - 1]!;
-  const name = family[0]!.name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
+  const name = familyDisplayName(family[0]!.name);
   emitEvent(state, "morale_shock", `${name} fell to ${Math.round(crossed.remainingRatio * 100)}% of its models and lost ${lost} morale.`, {
     blockIds: family.flatMap((formation) => formation.blockIds),
     formationIds: family.map((formation) => formation.id),

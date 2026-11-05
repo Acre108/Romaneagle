@@ -1,7 +1,7 @@
 import { BALANCE } from "../model/config";
 import { forcedRelocationHazard, terrainAt, terrainBlocksForcedRelocation, terrainMeleeDamageReceivedBonus, terrainResistanceModifier, type ForcedRelocationHazard } from "../model/terrain";
 import { terrainDefinition } from "../model/terrainDefinitions";
-import { blocksAt, friendlyBlockAt, inBounds, occupancyAt, positionKey } from "../model/occupancy";
+import { blocksAt, friendlyBlockAt, inBounds, occupancyAt, positionKey, blockFormation } from "../model/occupancy";
 import type { Character, CombatCalculationTerm, Direction, GameState, GridPosition, PressurePreview, PressureResult, RetreatMode, TroopBlock } from "../model/types";
 import { emitEvent } from "../events/events";
 import { addPosition, directionBetween, directionVector, facingContactModifier, formationEdgeType, oppositeDirection, orthogonalNeighbours, rotateDirection } from "./direction";
@@ -28,7 +28,7 @@ export function hostCharacter(state: GameState, block: TroopBlock): Character | 
 
 export function rearSupport(state: GameState, blockId: string): number {
   const block = state.blocks[blockId];
-  const formation = block?.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   if (!block || !formation || block.isContested) return 0;
   const behind = directionVector(oppositeDirection(blockFacing(state, block.id)));
   let support = 0;
@@ -61,7 +61,7 @@ export function attackingPressureBreakdown(
   chargeBonus = 0,
 ): CombatCalculationTerm[] {
   const block = state.blocks[blockId];
-  const formation = block?.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   if (!block || !formation || block.isContested) return [];
   const character = hostCharacter(state, block);
   return [
@@ -85,7 +85,7 @@ export function defendingResistanceBreakdown(
   cavalryCharge = false,
 ): CombatCalculationTerm[] {
   const block = state.blocks[blockId];
-  const formation = block?.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   if (!block || !formation) return [];
   const character = hostCharacter(state, block);
   const terrain = terrainAt(state, block.position)!;
@@ -240,7 +240,7 @@ function retreatModeFor(
   defender: TroopBlock,
   netPressure: number,
 ): RetreatMode {
-  const formation = defender.formationId ? state.formations[defender.formationId] : undefined;
+  const formation = blockFormation(state, defender);
   const stayingPower = formationStayingPower(state, defender.formationId);
   return netPressure >= BALANCE.chaoticRetreatPressureThreshold + stayingPower
     || (formation?.cohesion ?? 0) <= BALANCE.breakingMoraleThreshold
@@ -279,8 +279,8 @@ export function meleeDamagePreview(
 > | null {
   const attacker = state.blocks[attackerId];
   const defender = state.blocks[defenderId];
-  const attackerFormation = attacker?.formationId ? state.formations[attacker.formationId] : undefined;
-  const defenderFormation = defender?.formationId ? state.formations[defender.formationId] : undefined;
+  const attackerFormation = blockFormation(state, attacker);
+  const defenderFormation = blockFormation(state, defender);
   if (!attacker || !defender || !attackerFormation || !defenderFormation) return null;
   const incomingDirection = directionBetween(defender.position, attacker.position);
   const contactEdge = incomingDirection
@@ -351,8 +351,8 @@ export function pressurePreview(
 ): PressurePreview | null {
   const attacker = state.blocks[attackerId];
   const defender = state.blocks[defenderId];
-  const attackerFormation = attacker?.formationId ? state.formations[attacker.formationId] : undefined;
-  const defenderFormation = defender?.formationId ? state.formations[defender.formationId] : undefined;
+  const attackerFormation = blockFormation(state, attacker);
+  const defenderFormation = blockFormation(state, defender);
   if (!attacker || !defender || !attackerFormation || !defenderFormation || attacker.factionId === defender.factionId) return null;
   const contactDirection = directionBetween(defender.position, attacker.position)
     ?? (attacker.isContested && defender.isContested ? blockFacing(state, defender.id) : null);
@@ -376,7 +376,6 @@ export function pressurePreview(
   const result: PressureResult = net <= 0 ? "holds"
     : net < pushThreshold ? "wavers"
       : retreatMode === "chaotic" ? "scattered" : "pushed";
-  const retreatIntoDeepWater = retreatHazard === "river_deep";
   const characterModifiers: string[] = [];
   const attackingCharacter = hostCharacter(state, attacker);
   const defendingCharacter = hostCharacter(state, defender);
@@ -421,7 +420,6 @@ export function pressurePreview(
     retreatDestinations: retreat.destinations,
     cascadeLength: Math.max(0, retreat.chain.length - 1),
     mayCompress: retreat.blocked,
-    retreatIntoDeepWater,
     retreatHazard,
     characterModifiers,
     pressureMath: attackingPressureBreakdown(state, attackerId, options.pressureBonus ?? 0),
@@ -479,7 +477,7 @@ export function clearOrphanedContestedFlags(state: GameState): void {
 export function damageBlock(state: GameState, blockId: string, amount: number, reason: string): boolean {
   const block = state.blocks[blockId];
   if (!block) return true;
-  const formation = block.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   if (!formation) return false;
   const hitPointsBefore = blockHitPoints(formation, block);
   const damage = Math.min(hitPointsBefore, Math.max(0, amount));
@@ -578,7 +576,7 @@ export function retreatBlock(
         formationIds: block.formationId ? [block.formationId] : [],
         position: { ...block.position },
       });
-      const formation = block.formationId ? state.formations[block.formationId] : undefined;
+      const formation = blockFormation(state, block);
       damageBlock(state, block.id, formation ? blockHitPoints(formation, block) : block.models,
         drowned ? "drowning in deep water" : "being forced over a cliff");
     }

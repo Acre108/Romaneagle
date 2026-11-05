@@ -5,6 +5,7 @@ import { forceSplit } from "../rules/formationActions";
 import { resolveRoutingFormationActivation } from "../rules/routing";
 import { provisionalFormationFamily, recalculateAllConnectivity } from "../rules/splitting";
 import type { CommandResult } from "./executeCommand";
+import { manhattanDistance } from "../rules/direction";
 
 /** Developer shortcuts behind the battle screen's Debug panel. They skip the rules on purpose. */
 export type DebugCommand =
@@ -56,8 +57,7 @@ export function executeDebugCommand(state: GameState, command: DebugCommand): Co
       if (!defender) return { accepted: false, reason: "Selected block no longer exists." };
       const attacker = Object.values(state.blocks)
         .filter((block) => block.factionId !== defender.factionId && !block.isContested)
-        .sort((a, b) => Math.abs(a.position.x - defender.position.x) + Math.abs(a.position.y - defender.position.y)
-          - Math.abs(b.position.x - defender.position.x) - Math.abs(b.position.y - defender.position.y))[0];
+        .sort((a, b) => manhattanDistance(a.position, defender.position) - manhattanDistance(b.position, defender.position))[0];
       if (!attacker || !createContestedCell(state, attacker.id, defender.id)) return { accepted: false, reason: "No enemy block can be used." };
       return { accepted: true };
     }

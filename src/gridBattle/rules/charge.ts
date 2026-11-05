@@ -1,6 +1,6 @@
 import { BALANCE } from "../model/config";
 import { terrainAllowsCharge, terrainAt, terrainLimitsInfantryCharge } from "../model/terrain";
-import { enemyBlockAt } from "../model/occupancy";
+import { enemyBlockAt, blockFormation } from "../model/occupancy";
 import type { ChargePreview, Direction, Formation, GameState, GridPosition, OrderConfirmationPreview, PressurePreview, TroopBlock } from "../model/types";
 import { emitEvent } from "../events/events";
 import { addPosition, directionBetween, directionVector, formationEdgeType, oppositeDirection } from "./direction";
@@ -55,7 +55,7 @@ function infantryChargeBonusForContact(
   defender: TroopBlock,
   attackerPosition: GridPosition = attacker.position,
 ): { attackBonus: number; bonusNullified: boolean } {
-  const defenderFormation = defender.formationId ? state.formations[defender.formationId] : undefined;
+  const defenderFormation = blockFormation(state, defender);
   const incomingDirection = directionBetween(defender.position, attackerPosition);
   const bonusNullified = Boolean(defenderFormation?.isBraced && incomingDirection
     && formationEdgeType(blockFacing(state, defender.id), incomingDirection) === "front");
@@ -68,7 +68,7 @@ function infantryChargeBonusForContact(
 export function chargePreview(state: GameState, attackerId: string, defenderId: string): ChargePreview | null {
   const attacker = state.blocks[attackerId];
   const defender = state.blocks[defenderId];
-  const formation = attacker?.formationId ? state.formations[attacker.formationId] : undefined;
+  const formation = blockFormation(state, attacker);
   if (!attacker || !defender || !formation || formation.status !== "formed" || attacker.factionId === defender.factionId) return null;
   if (!isCavalry(formation.unit.unitType) && !isInfantry(formation.unit.unitType)) return null;
   if (formationBlocks(state, formation).some((block) => block.isContested)) return null;
@@ -120,7 +120,7 @@ export function chargeConfirmationPreview(
   const preview = chargePreview(state, attackerId, defenderId);
   const attacker = state.blocks[attackerId];
   const defender = state.blocks[defenderId];
-  const formation = attacker?.formationId ? state.formations[attacker.formationId] : undefined;
+  const formation = blockFormation(state, attacker);
   if (!preview || !attacker || !defender || !formation) return null;
   const contactState = structuredClone(state);
   const contactFormation = contactState.formations[formation.id]!;
@@ -248,7 +248,7 @@ function resolveCavalryLane(
     const attackerOrigin = { ...attacker.position };
     const defenderOrigin = { ...currentDefender.position };
     const incomingDirection = directionBetween(currentDefender.position, attacker.position);
-    const defenderFormation = currentDefender.formationId ? state.formations[currentDefender.formationId] : undefined;
+    const defenderFormation = blockFormation(state, currentDefender);
     if (defenderFormation?.isBraced && hasEquipment(defenderFormation, "brace_against_charge")
       && incomingDirection === blockFacing(state, currentDefender.id) && !blockIsWavering(state, currentDefender.id)) {
       damageBlock(state, attacker.id, 1, "braced spears");

@@ -331,7 +331,6 @@ export interface PressurePreview {
   retreatDestinations: GridPosition[];
   cascadeLength: number;
   mayCompress: boolean;
-  retreatIntoDeepWater: boolean;
   retreatHazard: "river_deep" | "cliff" | null;
   characterModifiers: string[];
   pressureMath: CombatCalculationTerm[];

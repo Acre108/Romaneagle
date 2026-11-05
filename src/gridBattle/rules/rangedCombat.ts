@@ -23,6 +23,7 @@ import { combatForecast } from "./combatPreview";
 import { directionVector, formationEdgeType } from "./direction";
 import { formationIsEngaged } from "./engagement";
 import { blockFacing } from "./blockFacing";
+import { blockFormation } from "../model/occupancy";
 
 const GRID_WORLD_UNITS = 60;
 
@@ -262,7 +263,7 @@ export function rangedAttackPreview(
   if (!formation || !target || target.factionId === formation.factionId || target.isContested) return null;
   const weapon = rangedWeapon(formation);
   if (!weapon || (formation.ammunition ?? 0) <= 0 || formationIsEngaged(state, formation.id)) return null;
-  const targetFormation = target.formationId ? state.formations[target.formationId] : undefined;
+  const targetFormation = blockFormation(state, target);
   if (!targetFormation) return null;
   const pairs = rangedImpactPairs(state, formation, target, targetFormation, weapon);
   if (pairs.length === 0) return null;

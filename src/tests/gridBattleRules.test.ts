@@ -1541,7 +1541,6 @@ describe("grid battle rules", () => {
     addFormation(cliff, "attacker", [{ x: 3, y: 4 }], "north", "roman");
     expect(pressurePreview(cliff, "attacker-b1", "defender-b1", { pressureBonus: 20 })).toMatchObject({
       retreatHazard: "cliff",
-      retreatIntoDeepWater: false,
     });
 
     const retreat = structuredClone(safe);

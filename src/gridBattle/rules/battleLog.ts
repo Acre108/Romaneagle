@@ -1,5 +1,5 @@
 import type { GameEvent, PressureResult } from "../model/types";
-import { originalFormationId } from "./splitting";
+import { originalFormationId, familyDisplayName } from "./splitting";
 
 export interface BattleLogEntry {
   headline: string;
@@ -10,7 +10,6 @@ export interface BattleLogEntry {
 
 const DEFAULT_ENTRY_LIMIT = 8;
 const BLOCK_ID_PATTERN = /[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-b\d+/g;
-const FRAGMENT_SUFFIX = / – (Main Body|Fragment [A-Z]+)$/;
 const FRAGMENT_LABEL = / – (Main Body|Fragment [A-Z]+)/g;
 
 /** Reported as they are written, because they already name formations and matter to the player. */
@@ -41,7 +40,7 @@ const RESULT_WORDS: readonly [PressureResult, string][] = [
 
 function formationName(names: ReadonlyMap<string, string>, formationId: string): string {
   const name = names.get(originalFormationId(formationId));
-  return (name ?? originalFormationId(formationId).replaceAll("-", " ")).replace(FRAGMENT_SUFFIX, "");
+  return familyDisplayName(name ?? originalFormationId(formationId).replaceAll("-", " "));
 }
 
 function blockFormationId(blockId: string): string {

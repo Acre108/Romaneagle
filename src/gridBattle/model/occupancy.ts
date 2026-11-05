@@ -1,4 +1,4 @@
-import type { CellOccupancy, FactionId, GameState, GridPosition, TroopBlock } from "./types";
+import type { CellOccupancy, FactionId, Formation, GameState, GridPosition, TroopBlock } from "./types";
 
 export function positionKey(position: GridPosition): string {
   return `${position.x},${position.y}`;
@@ -6,6 +6,10 @@ export function positionKey(position: GridPosition): string {
 
 export function samePosition(a: GridPosition, b: GridPosition): boolean {
   return a.x === b.x && a.y === b.y;
+}
+
+export function blockFormation(state: Pick<GameState, "formations">, block: Pick<TroopBlock, "formationId"> | undefined): Formation | undefined {
+  return block?.formationId ? state.formations[block.formationId] : undefined;
 }
 
 export function inBounds(state: Pick<GameState, "battlefield">, position: GridPosition): boolean {

@@ -53,7 +53,7 @@ function validateTriggerEffect(document: BattlefieldMapDocument, triggerId: stri
   }
   if (effect.type === "activate_to_attack") {
     assertNonemptyString(effect.formationId, `Trigger ${triggerId} activation formation ID`);
-    if (effect.targetFactionId !== "roman" && effect.targetFactionId !== "saxon") {
+    if (!isFactionId(effect.targetFactionId)) {
       throw new Error(`Trigger ${triggerId} has an invalid activation target faction.`);
     }
     return;
@@ -64,7 +64,7 @@ function validateTriggerEffect(document: BattlefieldMapDocument, triggerId: stri
   const formation = effect.formation;
   assertNonemptyString(formation.id, `Trigger ${triggerId} spawn formation ID`);
   assertNonemptyString(formation.name, `Trigger ${triggerId} spawn formation name`);
-  if (formation.factionId !== "roman" && formation.factionId !== "saxon") {
+  if (!isFactionId(formation.factionId)) {
     throw new Error(`Trigger ${triggerId} has an invalid spawn faction.`);
   }
   if (!isDirection(formation.facing)) throw new Error(`Trigger ${triggerId} has an invalid spawn facing.`);

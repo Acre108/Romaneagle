@@ -6,6 +6,7 @@ import { buildingCellAt, terrainAt, terrainElevationAt, terrainObjectsAt } from 
 import type { Character, Formation, FormationMode, GameState, GridPosition } from "../model/types";
 import { modelCapacity } from "../model/unitStats";
 import { archetypeCohesion, archetypeUnitProfile, startingAmmunition } from "./archetypeUnits";
+import { manhattanDistance } from "../rules/direction";
 
 interface DeploymentLayout {
   infantry: readonly (readonly GridPosition[])[];
@@ -173,7 +174,7 @@ function testDeploymentFootprint(state: GameState, blockCount: number, gap: bool
   const blocks = Object.values(state.blocks);
   const free = (position: GridPosition): boolean => isOpenDeploymentCell(state, position)
     && blocks.every((block) => {
-      const distance = Math.abs(block.position.x - position.x) + Math.abs(block.position.y - position.y);
+      const distance = manhattanDistance(block.position, position);
       return distance > 1 || (distance === 1 && !gap && block.factionId === "roman");
     });
   for (const width of TEST_DEPLOYMENT_WIDTHS) {

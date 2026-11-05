@@ -1,6 +1,6 @@
 import { emitEvent } from "../events/events";
 import { BALANCE } from "../model/config";
-import { blocksAt, inBounds, positionKey } from "../model/occupancy";
+import { blocksAt, inBounds, positionKey, blockFormation } from "../model/occupancy";
 import { terrainAt, terrainBlocksVoluntaryMovement } from "../model/terrain";
 import type { BlockDeparture, Direction, FactionId, Formation, GameState, GridPosition, TroopBlock } from "../model/types";
 import { addPosition, directionVector, manhattanDistance, oppositeDirection } from "./direction";
@@ -184,7 +184,7 @@ function moveRoutingStep(
     block.isContested = false;
   }
   for (const block of leaving) {
-    const formation = block.formationId ? state.formations[block.formationId] : undefined;
+    const formation = blockFormation(state, block);
     if (formation) formation.blockIds = formation.blockIds.filter((blockId) => blockId !== block.id);
     delete state.blocks[block.id];
   }
@@ -365,10 +365,11 @@ export function resolveRoutingFormationActivation(state: GameState, formationId:
   return { movedSteps, escapedBlocks, rallied, formationEscaped: false };
 }
 
-export function resolveAutomaticRoutingActivations(state: GameState, factionId: FactionId): number {
+/** One formation from each routed family that passes the filter, in a stable order. */
+function routedFamilyRepresentatives(state: GameState, include: (formation: Formation) => boolean): string[] {
   const seen = new Set<string>();
-  const routedFormationIds = Object.values(state.formations)
-    .filter((formation) => formation.factionId === factionId && !formation.hasActivated)
+  return Object.values(state.formations)
+    .filter(include)
     .filter((formation) => formationFamilyIsRouted(state, formation.id))
     .filter((formation) => {
       const key = formation.provisionalFamilyId ?? formation.id;
@@ -378,22 +379,16 @@ export function resolveAutomaticRoutingActivations(state: GameState, factionId: 
     })
     .map((formation) => formation.id)
     .sort((a, b) => a.localeCompare(b));
+}
+
+export function resolveAutomaticRoutingActivations(state: GameState, factionId: FactionId): number {
+  const routedFormationIds = routedFamilyRepresentatives(state, (formation) => formation.factionId === factionId && !formation.hasActivated);
   for (const formationId of routedFormationIds) resolveRoutingFormationActivation(state, formationId);
   return routedFormationIds.length;
 }
 
 export function disperseRemainingRoutedFormations(state: GameState): number {
-  const seen = new Set<string>();
-  const routedFormationIds = Object.values(state.formations)
-    .filter((formation) => formationFamilyIsRouted(state, formation.id))
-    .filter((formation) => {
-      const key = formation.provisionalFamilyId ?? formation.id;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((formation) => formation.id)
-    .sort((a, b) => a.localeCompare(b));
+  const routedFormationIds = routedFamilyRepresentatives(state, () => true);
   for (const formationId of routedFormationIds) {
     const family = provisionalFormationFamily(state, formationId);
     if (family.length > 0) removeRoutingFamily(state, family, `${family[0]!.name} could not escape or rally and dispersed.`);

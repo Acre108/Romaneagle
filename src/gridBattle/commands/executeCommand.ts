@@ -6,7 +6,7 @@ import { clearOrphanedContestedFlags } from "../rules/combat";
 import { legalReformDestinations, mergeCandidates, mergeFormations, reformBlock, transferCharacter } from "../rules/formationActions";
 import { canTranslateFormation, finishFormationMove, translateFormation, turnFormation } from "../rules/movement";
 import { canFallBack, engagedContacts, fallBackFormation, formationIsEngaged, resolveEngagedOrder } from "../rules/engagement";
-import { oppositeDirection } from "../rules/direction";
+import { oppositeDirection, manhattanDistance } from "../rules/direction";
 import { provisionalFormationFamily } from "../rules/splitting";
 import { formationFamilyIsRouted } from "../rules/routing";
 import { canSelectFormation, endFormationActivation, holdFormation } from "../rules/turnSystem";
@@ -292,7 +292,7 @@ export function commandLegality(state: GameState, action: BattleAction): Command
     const selected = state.blocks[state.selectedBlockId];
     const characterTransfer = selected?.characterId && blocks.some((block) =>
       block.id !== selected.id && !block.characterId && !block.isContested
-      && Math.abs(block.position.x - selected.position.x) + Math.abs(block.position.y - selected.position.y) === 1,
+      && manhattanDistance(block.position, selected.position) === 1,
     );
     if (legalReformDestinations(state, state.selectedBlockId).length === 0 && !characterTransfer) {
       return { accepted: false, reason: "The selected block has no legal reform or character-transfer destination." };

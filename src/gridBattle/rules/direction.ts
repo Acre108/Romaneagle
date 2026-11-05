@@ -25,7 +25,7 @@ export function addPosition(position: GridPosition, vector: GridPosition, distan
 }
 
 export function isCardinalStep(from: GridPosition, to: GridPosition): boolean {
-  return Math.abs(from.x - to.x) + Math.abs(from.y - to.y) === 1;
+  return manhattanDistance(from, to) === 1;
 }
 
 export function directionBetween(from: GridPosition, to: GridPosition): Direction | null {

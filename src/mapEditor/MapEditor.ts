@@ -47,8 +47,9 @@ import {
   type UnitArchetypeId,
 } from "../units/UnitArchetypes";
 import { MapEditHistory } from "./MapEditHistory";
-import { cssColour, drawTerrainDetail, drawElevationTint, drawBuildingCell, drawBuildingPlacementPreview, drawEdgeFeature, drawEdgeHover, drawRamp, drawElevationBadge, drawObject, drawSpawnPoint, drawDeploymentBlock, drawCoordinates, type CanvasLayout } from "./mapEditorArt";
+import { drawTerrainDetail, drawElevationTint, drawBuildingCell, drawBuildingPlacementPreview, drawEdgeFeature, drawEdgeHover, drawRamp, drawElevationBadge, drawObject, drawSpawnPoint, drawDeploymentBlock, drawCoordinates, type CanvasLayout } from "./mapEditorArt";
 import { ProjectMapConflictError, projectMapFileName, saveProjectMap } from "./MapStorage";
+import { cssColour } from "../ui/dom";
 
 export const MINIMUM_EDITOR_MAP_SIZE = 4;
 export const MAXIMUM_EDITOR_MAP_SIZE = 64;

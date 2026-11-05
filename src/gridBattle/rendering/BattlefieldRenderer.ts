@@ -11,7 +11,7 @@ import {
   type BattlefieldMap,
   type EdgeFeaturePlacement,
 } from "../model/battlefieldMap";
-import { blocksAt, occupancyAt, positionKey } from "../model/occupancy";
+import { blocksAt, occupancyAt, positionKey, blockFormation } from "../model/occupancy";
 import {
   buildingCellAt,
   groundTextureAt,
@@ -77,6 +77,7 @@ import {
   type DiamondEdge,
   type ScreenPosition,
 } from "./isometric/IsoProjection";
+import { cssColour } from "../../ui/dom";
 
 interface RendererCallbacks {
   onCellTap(position: GridPosition): void;
@@ -141,13 +142,9 @@ function formationColour(block: TroopBlock): number {
 }
 
 function moraleColour(state: GameState, block: TroopBlock): number {
-  const formation = block.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   if (!formation || blockIsWavering(state, block.id) || formation.cohesion <= 3) return MORALE_COLOURS.wavering;
   return formation.cohesion / formation.maxCohesion >= 0.7 ? MORALE_COLOURS.steady : MORALE_COLOURS.shaken;
-}
-
-function cssColour(colour: number): string {
-  return `#${colour.toString(16).padStart(6, "0")}`;
 }
 
 function samePosition(a: GridPosition | null, b: GridPosition | null): boolean {
@@ -1094,7 +1091,7 @@ export class BattlefieldRenderer {
       soldierMask ?? deriveBlockSlotOccupancy(state, block, unavailableMask).soldierMask,
     );
     const soldiers = new Graphics();
-    const formation = block.formationId ? state.formations[block.formationId] : undefined;
+    const formation = blockFormation(state, block);
     const soldierTexture = this.textureForSoldierArt(soldierArtKind(state, block));
     for (const slotIndex of occupiedSlots) {
       const projected = this.soldierOffset(BLOCK_SLOT_POINTS[slotIndex]!);
@@ -1283,7 +1280,7 @@ export class BattlefieldRenderer {
   }
 
   private drawFormationBorders(container: Container, state: GameState, block: TroopBlock): void {
-    const formation = block.formationId ? state.formations[block.formationId] : undefined;
+    const formation = blockFormation(state, block);
     if (!formation || block.isContested) return;
     const facing = blockFacing(state, block.id);
     const g = new Graphics();
@@ -1318,7 +1315,7 @@ export class BattlefieldRenderer {
   }
 
   private drawFormationIndicator(state: GameState, block: TroopBlock, selected: boolean): void {
-    const formation = block.formationId ? state.formations[block.formationId] : undefined;
+    const formation = blockFormation(state, block);
     if (!formation || block.isContested || !selected) return;
     const facing = blockFacing(state, block.id);
     const edge = edgePoints(directionToDiamondEdge(facing));

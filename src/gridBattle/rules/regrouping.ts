@@ -3,8 +3,8 @@ import { blocksAt, inBounds } from "../model/occupancy";
 import { terrainAt, terrainBlocksVoluntaryMovement } from "../model/terrain";
 import type { Direction, Formation, GameState, TroopBlock } from "../model/types";
 import { emitEvent } from "../events/events";
-import { addPosition, directionVector } from "./direction";
-import { connectedComponents, provisionalFormationFamily } from "./splitting";
+import { addPosition, directionVector, manhattanDistance } from "./direction";
+import { connectedComponents, provisionalFormationFamily, familyDisplayName } from "./splitting";
 import { applyTerrainOverflow, planTerrainOverflow } from "./terrainOverflow";
 import { clearFormationBrace } from "./brace";
 
@@ -28,7 +28,7 @@ function formationsTouch(state: GameState, first: Formation, second: Formation):
 }
 
 function familyName(formation: Formation): string {
-  return formation.name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
+  return familyDisplayName(formation.name);
 }
 
 function familyMainBody(formations: Formation[]): Formation {
@@ -152,7 +152,7 @@ function distanceToFamily(state: GameState, formation: Formation, siblings: Form
     for (const sibling of siblings) {
       for (const target of formationBlocks(state, sibling)) {
         distance = Math.min(distance,
-          Math.abs(moved.x - target.position.x) + Math.abs(moved.y - target.position.y));
+          manhattanDistance(moved, target.position));
       }
     }
   }

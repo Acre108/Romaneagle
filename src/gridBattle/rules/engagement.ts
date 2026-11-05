@@ -1,5 +1,5 @@
 import { emitEvent } from "../events/events";
-import { blocksAt, enemyBlockAt, inBounds, positionKey } from "../model/occupancy";
+import { blocksAt, enemyBlockAt, inBounds, positionKey, blockFormation } from "../model/occupancy";
 import { terrainAt, terrainBlocksVoluntaryMovement } from "../model/terrain";
 import type { Direction, Formation, GameState, GridPosition, TroopBlock } from "../model/types";
 import { BALANCE } from "../model/config";
@@ -159,7 +159,7 @@ function flankContactPriority(state: GameState, position: GridPosition, factionI
   let priority = 0;
   for (const neighbour of orthogonalNeighbours(position)) {
     const enemy = enemyBlockAt(state, neighbour, factionId);
-    const enemyFormation = enemy?.formationId ? state.formations[enemy.formationId] : undefined;
+    const enemyFormation = blockFormation(state, enemy);
     const incomingDirection = enemy ? directionBetween(enemy.position, position) : null;
     if (!enemy || !enemyFormation || !incomingDirection) continue;
     const edge = formationEdgeType(blockFacing(state, enemy.id), incomingDirection);
@@ -397,7 +397,7 @@ function applyContactMoraleShocks(state: GameState, contacts: readonly EngagedCo
     worstContactEdge: "front" | "side" | "rear";
   }>();
   const register = (target: TroopBlock, enemy: TroopBlock): void => {
-    const targetFormation = target.formationId ? state.formations[target.formationId] : undefined;
+    const targetFormation = blockFormation(state, target);
     const incoming = directionBetween(target.position, enemy.position);
     if (!targetFormation || !incoming || !enemy.formationId) return;
     const contactEdge = formationEdgeType(targetFormation.facing, incoming);
@@ -443,7 +443,7 @@ function resolveCounterattack(state: GameState, fight: EngagedFight, attacker: T
 /** After winning ground: Press always follows it up, Battle only dresses a lagging file up to its starting front. */
 function followUpVacatedGround(state: GameState, fight: EngagedFight, attacker: TroopBlock, attackerOrigin: GridPosition, defenderOrigin: GridPosition): void {
   const survivingAttacker = state.blocks[attacker.id];
-  const attackerFormation = attacker.formationId ? state.formations[attacker.formationId] : undefined;
+  const attackerFormation = blockFormation(state, attacker);
   if (!survivingAttacker || !attackerFormation) return;
   const follows = fight.order === "press" || canDressBattleLine(
     state,

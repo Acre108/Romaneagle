@@ -1,7 +1,7 @@
 import { BALANCE } from "../model/config";
 import type { FactionId, Formation, GameState, GridPosition } from "../model/types";
 import { manhattanDistance } from "./direction";
-import { originalFormationId } from "./splitting";
+import { originalFormationId, familyDisplayName } from "./splitting";
 
 export type PlateTone = "steady" | "shaken" | "breaking";
 
@@ -27,7 +27,7 @@ export function moraleWord(formation: Pick<Formation, "cohesion" | "maxCohesion"
 }
 
 function shortName(name: string): string {
-  const withoutFragment = name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
+  const withoutFragment = familyDisplayName(name);
   return withoutFragment.split(" · ").at(-1) ?? withoutFragment;
 }
 

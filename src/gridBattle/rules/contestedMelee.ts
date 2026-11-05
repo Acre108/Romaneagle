@@ -1,4 +1,4 @@
-import { friendlyBlockAt, occupancyAt, positionKey } from "../model/occupancy";
+import { friendlyBlockAt, occupancyAt, positionKey, blockFormation } from "../model/occupancy";
 import type { Character, GameState, TroopBlock } from "../model/types";
 import { emitEvent } from "../events/events";
 import { orthogonalNeighbours } from "./direction";
@@ -23,7 +23,7 @@ function adjacentMeleeSupport(state: GameState, block: TroopBlock): number {
 
 export function meleeScore(state: GameState, blockId: string): number {
   const block = state.blocks[blockId];
-  const formation = block?.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   if (!block || !formation) return 0;
   const character = hostCharacter(state, block);
   return formation.unit.attack + modelCountModifier(block.models, block.modelCapacity) + (character?.meleeBonus ?? 0)

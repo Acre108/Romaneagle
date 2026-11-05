@@ -1,5 +1,5 @@
 import { emitEvent } from "../events/events";
-import { inBounds, positionKey } from "../model/occupancy";
+import { inBounds, positionKey, blockFormation } from "../model/occupancy";
 import {
   terrainBlockCapacityAt,
   terrainBlocksVoluntaryRelocation,
@@ -73,7 +73,7 @@ export function applyTerrainOverflow(state: GameState, overflow: readonly Terrai
   const createdIds: string[] = [];
   for (const item of overflow) {
     const source = state.blocks[item.sourceBlockId];
-    const formation = source?.formationId ? state.formations[source.formationId] : undefined;
+    const formation = blockFormation(state, source);
     if (!source || !formation) continue;
     source.models -= item.models;
     const id = nextTerrainOverflowId(state, source.id);

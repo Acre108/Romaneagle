@@ -13,6 +13,7 @@ import type { RangedAttackPreview } from "../rules/rangedCombat";
 import { connectedComponents, originalFormationId, provisionalFormationFamily } from "../rules/splitting";
 import { getRangedWeaponProfile } from "../../units/RangedWeapons";
 import { requiredElement } from "../../ui/dom";
+import { blockFormation } from "../model/occupancy";
 
 function definitionRows(values: readonly [string, string | number][]): HTMLElement[] {
   return values.map(([label, value]) => {
@@ -161,7 +162,7 @@ export function renderBlockPanel(state: GameState, inspected: TroopBlock | undef
     return;
   }
   const character = block.characterId ? state.characters[block.characterId] : undefined;
-  const formation = block.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   name.textContent = `${String.fromCharCode(65 + block.position.x)}${block.position.y + 1} · ${formation?.name ?? "Block"}`;
   const facing = blockFacing(state, block.id);
   const optional: [string, string | number][] = [];

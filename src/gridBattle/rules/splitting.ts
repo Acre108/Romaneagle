@@ -1,10 +1,16 @@
 import { BALANCE } from "../model/config";
 import type { Formation, GameState, TroopBlock } from "../model/types";
 import { emitEvent } from "../events/events";
+import { manhattanDistance } from "./direction";
+
+/** A formation's name without the label it gains when it splits into bodies. */
+export function familyDisplayName(name: string): string {
+  return name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
+}
 
 function adjacent(a: TroopBlock, b: TroopBlock): boolean {
   return !a.isContested && !b.isContested
-    && Math.abs(a.position.x - b.position.x) + Math.abs(a.position.y - b.position.y) === 1;
+    && manhattanDistance(a.position, b.position) === 1;
 }
 
 export function connectedComponents(state: GameState, formationId: string): string[][] {
@@ -173,7 +179,7 @@ export function recalculateFormationConnectivity(state: GameState, formationId: 
     });
   }
   const provisionalFamilyId = formation.provisionalFamilyId ?? formation.id;
-  const originalName = formation.name.replace(/ – (Main Body|Fragment [A-Z]+)$/, "");
+  const originalName = familyDisplayName(formation.name);
   const originalLeaderCharacterId = formation.leaderCharacterId;
   const retainedHasLeader = originalLeaderCharacterId
     ? retained.includes(state.characters[originalLeaderCharacterId]?.hostBlockId ?? "")
@@ -226,7 +232,7 @@ export function areFormationsConnected(state: GameState, firstId: string, second
     const a = state.blocks[firstBlockId];
     const b = state.blocks[secondBlockId];
     if (!a || !b || a.isContested || b.isContested) return false;
-    return Math.abs(a.position.x - b.position.x) + Math.abs(a.position.y - b.position.y) === 1;
+    return manhattanDistance(a.position, b.position) === 1;
   }));
 }
 

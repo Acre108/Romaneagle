@@ -2,15 +2,12 @@ import { type BattlefieldMap, type EdgeFeaturePlacement, type GroundTerrainType,
 import { groundTextureDefinition } from "../gridBattle/model/terrainDefinitions";
 import { edgeFeatureDefinition } from "../gridBattle/model/edgeFeatureDefinitions";
 import type { BuildingCell, Direction, GridPosition } from "../gridBattle/model/types";
+import { cssColour } from "../ui/dom";
 
 export interface CanvasLayout {
   cellSize: number;
   originX: number;
   originY: number;
-}
-
-export function cssColour(colour: number): string {
-  return `#${colour.toString(16).padStart(6, "0")}`;
 }
 
 export function drawTerrainDetail(

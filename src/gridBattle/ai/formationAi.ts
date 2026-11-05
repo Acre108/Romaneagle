@@ -2,7 +2,7 @@ import type { GameCommand } from "../commands/executeCommand";
 import { commandLegality, executeCommand } from "../commands/executeCommand";
 import { planOrder } from "../commands/planOrder";
 import { BALANCE } from "../model/config";
-import { positionKey } from "../model/occupancy";
+import { blockFormation, positionKey } from "../model/occupancy";
 import type { Direction, FactionId, Formation, GameState, TroopBlock } from "../model/types";
 import { chargePreview } from "../rules/charge";
 import { pressurePreview } from "../rules/combat";
@@ -235,7 +235,7 @@ function planRangedActivation(state: GameState, formation: Formation, steps: AiC
     formationId: formation.id,
     formationName: formation.name,
     intent: "shoot",
-    summary: `${formation.name} shoots at ${target.enemy.formationId ? state.formations[target.enemy.formationId]?.name ?? target.enemy.id : target.enemy.id}.`,
+    summary: `${formation.name} shoots at ${blockFormation(state, target.enemy)?.name ?? target.enemy.id}.`,
     steps,
     priority: 40_000 + target.preview.casualties * 100 + target.preview.damage,
   };
@@ -258,7 +258,7 @@ function planChargeActivation(state: GameState, formation: Formation, steps: AiC
     formationId: formation.id,
     formationName: formation.name,
     intent: "charge",
-    summary: `${formation.name} charges ${target.defender.formationId ? state.formations[target.defender.formationId]?.name ?? target.defender.id : target.defender.id}.`,
+    summary: `${formation.name} charges ${blockFormation(state, target.defender)?.name ?? target.defender.id}.`,
     steps,
     priority: 45_000 + target.preview.impactDamage * 100 + target.preview.attackBonus * 10 - target.preview.distance,
   };

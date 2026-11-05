@@ -1,5 +1,6 @@
 import type { GameState, TroopBlock } from "./types";
 import { isCavalry } from "./unitStats";
+import { blockFormation } from "./occupancy";
 
 type CharacterBlock = Pick<TroopBlock, "formationId" | "models" | "modelCapacity" | "characterId">;
 type ContestedBlock = CharacterBlock & Pick<TroopBlock, "factionId" | "id">;
@@ -38,7 +39,7 @@ const ROMAN_DUEL_ORDER: readonly BlockSlotIndex[] = [3, 4, 1, 7, 0, 6, 2, 8, 5];
 const SAXON_DUEL_ORDER: readonly BlockSlotIndex[] = [5, 4, 1, 7, 2, 8, 0, 6, 3];
 
 export function normalBlockSlotCapacity(state: GameState, block: CharacterBlock): number {
-  const formation = block.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   return formation ? Math.min(BLOCK_SLOT_COUNT, block.modelCapacity) : 0;
 }
 
@@ -68,7 +69,7 @@ export function blockSlotCount(mask: BlockSlotMask): number {
 }
 
 export function preferredSoldierSlotOrder(state: GameState, block: CharacterBlock): readonly BlockSlotIndex[] {
-  const formation = block.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   if (formation && isCavalry(formation.unit.unitType)) return CAVALRY_ORDER;
   return formation?.formationMode === "closed" ? CLOSE_ORDER : OPEN_ORDER;
 }

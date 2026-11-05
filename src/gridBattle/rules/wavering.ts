@@ -1,6 +1,7 @@
 import { BALANCE } from "../model/config";
 import type { GameState, TroopBlock } from "../model/types";
 import { manhattanDistance } from "./direction";
+import { blockFormation } from "../model/occupancy";
 
 function commandMoraleBonus(state: GameState, block: TroopBlock): number {
   return Object.values(state.characters).some((character) => {
@@ -14,7 +15,7 @@ function commandMoraleBonus(state: GameState, block: TroopBlock): number {
 export function blockIsBreaking(state: GameState, blockId: string): boolean {
   const block = state.blocks[blockId];
   if (!block) return false;
-  const formation = block.formationId ? state.formations[block.formationId] : undefined;
+  const formation = blockFormation(state, block);
   return (formation?.cohesion ?? 0) + commandMoraleBonus(state, block) <= BALANCE.breakingMoraleThreshold;
 }
 
